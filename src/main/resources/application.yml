@@ -2,10 +2,18 @@ spring:
   application:
     name: sftr-mapping-engine
   main:
-    web-application-type: none        # batch application, no web server
-  threads:
-    virtual:
-      enabled: true
+    web-application-type: none        # no web server
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: sftr-mapping-engine
+      auto-offset-reset: earliest
+      enable-auto-commit: false       # offsets are acknowledged by the listener after the row is written
+      max-poll-records: 1             # one message at a time
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual_immediate
 
 logging:
   level:
@@ -15,15 +23,16 @@ sftr:
   mapping:
     config: classpath:sftr-field-mappings.json
 
-  runner:
-    enabled: false                    # set true (command line) to run the batch
-    input: ./data/input.jsonl         # JSON Lines: one JSON object per line
-    output: ./data/sftr-report.csv
-    file-date:                        # optional ISO date; default is today
+  kafka:
+    enabled: true
+    topic: trade-messages             # use ONE partition if global order matters
+    retry-backoff: 5s                 # wait before re-trying a message that could not be handled now
 
-  processing:
-    window-size: 1000                 # records in flight per window
-    max-concurrent-ref-data-calls: 20
+  output:
+    file: ./data/sftr-report.csv      # rows are appended, in arrival order
+    rejects-file:                     # default: <file>.rejects
+    flush-each-record: true           # flush before the offset is acknowledged
+    file-date:                        # optional ISO date; default is today
 
   csv:
     delimiter: ","

@@ -38,6 +38,14 @@ class DataFormatterTest {
     }
 
     @Test
+    void dateWithoutPatternAcceptsDateOnlyAndTimestamps() {
+        assertThat(run("{\"anyDate\":\"2025-12-31\"}").getImBranchOfOtherCpType()).isEqualTo("2025-12-31");
+        assertThat(run("{\"anyDate\":\"2025-12-31T10:30:00\"}").getImBranchOfOtherCpType()).isEqualTo("2025-12-31");
+        assertThat(run("{\"anyDate\":\"2025-12-31T23:30:00-05:00\"}").getImBranchOfOtherCpType()).isEqualTo("2025-12-31");
+        assertThat(run("{\"anyDate\":\"2025-12-31T23:30:00Z\"}").getImBranchOfOtherCpType()).isEqualTo("2025-12-31");
+    }
+
+    @Test
     void missingOrBlankInputGivesNull() {
         SftrTransactionReport r = run("{\"amount\":\"  \",\"qty\":null}");
         assertThat(r.getImNatureOfOtherCp()).isNull();
