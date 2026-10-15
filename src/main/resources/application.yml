@@ -65,3 +65,7 @@ sftr:
       cpSide:
         GIVE: [PO, DP, RP, TP, BP, BC, CLD, B, RPO]
         TAKE: [PI, DV, RV, TV, LP, LC, CLR, L, RPI]
+
+  input:
+    # file: ./data/input.csv          # set to read messages from a .txt/.csv file instead of Kafka (use the "file" profile)
+    delimiter: ","                    # CSV input only

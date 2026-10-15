@@ -1,0 +1,4 @@
+# Run with --spring.profiles.active=file and --sftr.input.file=<path to .txt or .csv>
+sftr:
+  kafka:
+    enabled: false
