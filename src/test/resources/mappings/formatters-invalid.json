@@ -1,0 +1,7 @@
+[
+  { "outputField": "IM_NatureOfOtherCp", "mappingType": "DIRECT_DATA_TRANSFORM", "formatter": "DECIMAL" },
+  { "outputField": "IM_OtherCpType", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "qty" },
+  { "outputField": "CP_BranchOfOtherCp", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "d", "formatter": "DATE", "inputFormatRef": "noSuchRef" },
+  { "outputField": "CP_SecOfRepCp", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "d", "formatter": "DATE", "inputFormatRef": "badPattern" },
+  { "outputField": "CP_CpSide", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "d", "formatter": "DATE", "status": "PENDING" }
+]

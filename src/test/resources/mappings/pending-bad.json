@@ -1,0 +1,7 @@
+[
+  { "outputField": "IM_SubmitterID", "mappingType": "HARDCODE", "constantRef": "submitterId" },
+  { "outputField": "IM_OtherCpType", "mappingType": "TRANSFORM", "handler": "NO_SUCH_HANDLER", "status": "PENDING" },
+  { "outputField": "IM_RepCpCodeType", "mappingType": "HARDCODE", "constantRef": "noSuchConstant", "status": "IGNORE" },
+  { "outputField": "CP_BranchOfOtherCp", "mappingType": "DIRECT", "status": "PENDING" },
+  { "outputField": "CP_AdditionalSecClass", "mappingType": "NOT_APPLICABLE", "handler": "X", "constantRef": "y" }
+]

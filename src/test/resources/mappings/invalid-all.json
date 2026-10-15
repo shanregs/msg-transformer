@@ -1,0 +1,9 @@
+[
+  { "outputField": "IM_SubmitterID", "mappingType": "HARDCODE", "constantRef": "submitterId" },
+  { "outputField": "IM_SubmitterID", "mappingType": "HARDCODE", "constantRef": "submitterId" },
+  { "outputField": "XX_NoSuchField", "mappingType": "HARDCODE", "constantRef": "submitterId" },
+  { "outputField": "CP_BranchOfOtherCp", "mappingType": "DIRECT" },
+  { "outputField": "IM_RepCpCodeType", "mappingType": "HARDCODE" },
+  { "outputField": "IM_ParticipantID", "mappingType": "HARDCODE", "constantRef": "noSuchConstant" },
+  { "outputField": "CP_RepCp", "mappingType": "ENRICH", "handler": "NO_SUCH_HANDLER" }
+]

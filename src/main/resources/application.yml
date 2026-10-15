@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: sftr-mapping-engine
+  main:
+    web-application-type: none        # batch application, no web server
+  threads:
+    virtual:
+      enabled: true
+
+logging:
+  level:
+    com.bmo.sftr: INFO
+
+sftr:
+  mapping:
+    config: classpath:sftr-field-mappings.json
+
+  runner:
+    enabled: false                    # set true (command line) to run the batch
+    input: ./data/input.jsonl         # JSON Lines: one JSON object per line
+    output: ./data/sftr-report.csv
+    file-date:                        # optional ISO date; default is today
+
+  processing:
+    window-size: 1000                 # records in flight per window
+    max-concurrent-ref-data-calls: 20
+
+  csv:
+    delimiter: ","
+
+  refdata:
+    base-url: http://localhost:8089
+    path: /ref-data/sftr
+    connect-timeout: 2s
+    read-timeout: 5s
+    max-attempts: 3
+    backoff: 200ms                    # attempt n waits n * backoff
+    request-fields:                   # request JSON key -> input message field
+      bmoLegalEntity: bmoLegalEntity
+      counterpartyId: counterpartyId
+      group_cd: group_cd
+      delegated: delegated
+
+  constants:
+    values:                           # single literals
+      submitterId: BMOLN9000003
+      participantId: BMOLN9000003
+      repCpCodeType: LEI
+      natureOfRepCpDefault: F
+      londonBranchCountry: GB
+      refPathPartyLei: find_sftr_party.values.lei
+      refPathPartyNature: find_sftr_party_sector.values.natureOfReportingCounterparty
+      refPathPartySector: find_sftr_party_sector.values.sector
+    lists:                            # lists of literals
+      londonLegalEntityPrefixes: [LDNBB, LDN-]
+    lookups:                          # code tables: result value -> codes that produce it
+      cpSide:
+        GIVE: [PO, DP, RP, TP, BP, BC, CLD, B, RPO]
+        TAKE: [PI, DV, RV, TV, LP, LC, CLR, L, RPI]

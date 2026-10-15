@@ -1,0 +1,6 @@
+[
+  { "outputField": "IM_NatureOfOtherCp", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "amount", "formatter": "DECIMAL", "inputFormatRef": "amountInput", "outputFormatRef": "amountOutput" },
+  { "outputField": "IM_OtherCpType", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "qty", "formatter": "INTEGER" },
+  { "outputField": "CP_BranchOfOtherCp", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "tradeDate", "formatter": "DATE", "inputFormatRef": "dateInput", "outputFormatRef": "dateOutput" },
+  { "outputField": "CP_SecOfRepCp", "mappingType": "DIRECT_DATA_TRANSFORM", "inputField": "execTs", "formatter": "TIMESTAMP", "inputFormatRef": "tsInput", "outputFormatRef": "tsOutput", "inputZoneRef": "zoneNy", "outputZoneRef": "zoneUtc" }
+]

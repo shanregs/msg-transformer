@@ -1,0 +1,4 @@
+[
+  { "outputField": "CP_CpSide", "mappingType": "TRANSFORM" },
+  { "outputField": "IM_OtherCpType", "mappingType": "TRANSFORM", "handler": "COUNTING", "status": "PENDING" }
+]

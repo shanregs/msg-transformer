@@ -1,0 +1,7 @@
+[
+  { "outputField": "IM_SubmitterID", "mappingType": "HARDCODE", "constantRef": "submitterId" },
+  { "outputField": "CP_RepCp", "mappingType": "ENRICH" },
+  { "outputField": "CP_CpSide", "mappingType": "TRANSFORM" },
+  { "outputField": "CP_EntResponsibleForRep", "mappingType": "ENRICH", "handler": "CP_RepCp" },
+  { "outputField": "IM_OtherCpType", "mappingType": "TRANSFORM", "status": "PENDING" }
+]

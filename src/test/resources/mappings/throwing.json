@@ -1,0 +1,3 @@
+[
+  { "outputField": "CP_CpSide", "mappingType": "TRANSFORM", "handler": "THROWS" }
+]

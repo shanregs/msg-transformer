@@ -1,0 +1,12 @@
+sftr:
+  constants:
+    values:
+      amountInput: "#,##0.00"
+      amountOutput: "0.0000"
+      dateInput: dd/MM/yyyy
+      dateOutput: yyyy-MM-dd
+      tsInput: dd/MM/yyyy HH:mm:ss
+      tsOutput: "yyyy-MM-dd'T'HH:mm:ss'Z'"
+      zoneNy: America/New_York
+      zoneUtc: UTC
+      badPattern: "qqqqqqq"

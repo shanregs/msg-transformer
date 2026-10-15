@@ -1,0 +1,5 @@
+[
+  { "outputField": "CP_BranchOfOtherCp", "mappingType": "DIRECT", "inputField": "cparty_branch_cd" },
+  { "outputField": "CP_CpSide", "mappingType": "TRANSFORM", "status": "PENDING" },
+  { "outputField": "IM_OtherCpType", "mappingType": "TRANSFORM", "status": "PENDING" }
+]
