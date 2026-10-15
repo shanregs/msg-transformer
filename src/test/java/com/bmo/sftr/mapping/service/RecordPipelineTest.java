@@ -96,20 +96,17 @@ class RecordPipelineTest {
     }
 
     @Test
-    void referenceDataOutageIsNotSkippedAndRetryKeepsTheOrder() throws Exception {
+    void referenceDataOutageRejectsThatMessageAndProcessingContinues() throws Exception {
         RecordPipeline p = pipeline();
         p.handle(msg("1", "PO"), "t-0@0");
 
         when(refData.fetch(any())).thenThrow(new RefDataClient.UnavailableException("down", null));
-        assertThatThrownBy(() -> p.handle(msg("2", "PI"), "t-0@1"))
-                .isInstanceOf(RefDataClient.UnavailableException.class);
-        assertThat(sides()).containsExactly("GIVE");              // nothing written for the failed message
-        assertThat(rejects).doesNotExist();                        // and it is not treated as bad
+        assertThat(p.handle(msg("2", "PI"), "t-0@1")).isEqualTo(RecordPipeline.Outcome.REJECTED);
+        assertThat(Files.readString(rejects)).isEqualTo("t-0@1\tReference data unavailable\n");
 
-        doReturn(REF).when(refData).fetch(any());                  // service is back: the SAME message is retried
-        p.handle(msg("2", "PI"), "t-0@1");
+        doReturn(REF).when(refData).fetch(any());                  // service is back: next message is fine
         p.handle(msg("3", "PO"), "t-0@2");
-        assertThat(sides()).containsExactly("GIVE", "TAKE", "GIVE");
+        assertThat(sides()).containsExactly("GIVE", "GIVE");
     }
 
     @Test

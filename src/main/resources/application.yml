@@ -26,7 +26,6 @@ sftr:
   kafka:
     enabled: true
     topic: trade-messages             # use ONE partition if global order matters
-    retry-backoff: 5s                 # wait before re-trying a message that could not be handled now
 
   output:
     file: ./data/sftr-report.csv      # rows are appended, in arrival order

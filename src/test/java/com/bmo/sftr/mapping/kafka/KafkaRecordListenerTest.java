@@ -1,9 +1,7 @@
 package com.bmo.sftr.mapping.kafka;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,13 +39,12 @@ class KafkaRecordListenerTest {
     }
 
     @Test
-    void failureIsNotAcknowledgedSoTheSameMessageIsRedelivered() throws Exception {
+    void failureIsLoggedAndTheMessageIsSkipped() throws Exception {
         when(pipeline.handle("{}", "trade-messages-0@9"))
                 .thenThrow(new RefDataClient.UnavailableException("down", null));
 
-        assertThatThrownBy(() -> listener.onMessage(record(9, "{}"), ack))
-                .isInstanceOf(RefDataClient.UnavailableException.class);
-        verify(ack, never()).acknowledge();
+        listener.onMessage(record(9, "{}"), ack);
+        verify(ack).acknowledge();
     }
 
     @Test

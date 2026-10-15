@@ -32,11 +32,9 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li>Written: the row is appended (and flushed, by default) before this method returns.</li>
- *   <li>Rejected: the message itself is bad (malformed JSON, 4xx from reference data, mapping error).
- *       A line goes to the rejects file and handling carries on.</li>
- *   <li>Exception: the message is fine but could not be handled now (reference data unavailable,
- *       output not writable). Nothing was written; the caller must retry the same message before
- *       moving on, otherwise the order would change.</li>
+ *   <li>Rejected: the message could not be processed (malformed JSON, reference data failure after
+ *       its own retries, mapping error). A line goes to the rejects file and handling carries on.</li>
+ *   <li>IOException: the output or rejects file could not be written; the caller logs it and moves on.</li>
  * </ul>
  */
 @Service
@@ -86,9 +84,7 @@ public class RecordPipeline {
         SftrTransactionReport report;
         try {
             report = map(json);
-        } catch (RefDataClient.UnavailableException e) {
-            throw e;                                   // transient: do not skip, the caller retries
-        } catch (RuntimeException e) {
+        } catch (RuntimeException e) {                 // includes reference data failures (the client already retries)
             reject(sourceRef, summary(e));
             return Outcome.REJECTED;
         }
@@ -125,6 +121,7 @@ public class RecordPipeline {
         String text = switch (t) {
             case JacksonException _ -> "Malformed JSON";
             case HttpStatusCodeException h -> "Reference data HTTP " + h.getStatusCode().value();
+            case RefDataClient.UnavailableException _ -> "Reference data unavailable";
             case IllegalStateException e when e.getMessage() != null -> e.getMessage();
             case IllegalArgumentException e when e.getMessage() != null
                     && (e.getMessage().startsWith("Empty") || e.getMessage().startsWith("Not a JSON")) -> e.getMessage();
