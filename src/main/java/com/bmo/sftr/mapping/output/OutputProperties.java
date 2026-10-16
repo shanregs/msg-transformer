@@ -12,7 +12,6 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param file               the CSV report; rows are appended
  * @param rejectsFile        rejected messages; blank means {@code <file>.rejects}
  * @param fileDate           ISO date written into the report; blank means today
- * @param flushEachRecord    flush after every row (used by the sink that keeps the file open)
  * @param writeMode          when rows are written, see {@link WriteMode}
  * @param batchSize          rows per batch, used by {@link WriteMode#COUNT}
  * @param batchInterval      maximum age of the oldest buffered row, used by {@link WriteMode#INTERVAL}
@@ -23,7 +22,6 @@ public record OutputProperties(
         String file,
         String rejectsFile,
         String fileDate,
-        @DefaultValue("true") boolean flushEachRecord,
         @DefaultValue("PER_RECORD") WriteMode writeMode,
         @DefaultValue("10") int batchSize,
         @DefaultValue("5m") Duration batchInterval,

@@ -28,7 +28,6 @@ class OutputPropertiesTest {
         assertThat(p.batchSize()).isEqualTo(10);
         assertThat(p.batchInterval()).isEqualTo(Duration.ofMinutes(5));
         assertThat(p.maxBufferedRecords()).isEqualTo(1000);
-        assertThat(p.flushEachRecord()).isTrue();
     }
 
     @Test
@@ -54,7 +53,7 @@ class OutputPropertiesTest {
 
     @Test
     void fileIsRequired() {
-        assertThatThrownBy(() -> new OutputProperties(" ", null, null, true, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000))
+        assertThatThrownBy(() -> new OutputProperties(" ", null, null, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("sftr.output.file is required");
     }

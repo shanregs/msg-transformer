@@ -30,8 +30,7 @@ sftr:
   output:
     file: ./data/sftr-report.csv      # rows are appended, in arrival order
     rejects-file:                     # default: <file>.rejects
-    flush-each-record: true           # flush before the offset is acknowledged
-    write-mode: PER_RECORD            # PER_RECORD | INTERVAL | COUNT (read and validated; the sinks arrive in the next steps)
+    write-mode: PER_RECORD            # PER_RECORD: open, append, close per message (INTERVAL and COUNT come in the next step)
     batch-size: 10                    # COUNT: write when this many rows are waiting
     batch-interval: 5m                # INTERVAL: write when the oldest waiting row is this old
     max-buffered-records: 1000        # safety cap on rows held in memory
