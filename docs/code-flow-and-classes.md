@@ -1,6 +1,6 @@
 # SFTR Mapping Engine: Code Flow and Class Guide
 
-Diagrams for this design are in [c4-architecture.md](c4-architecture.md). Why the write modes and the Camel route were built this way: [design-camel-batch-writer.md](design-camel-batch-writer.md).
+Read [design-and-architecture.md](design-and-architecture.md) first for the purpose, principles and decisions. This document follows the code: what runs at startup, what runs for each message, and every class. Related: [rules-compilation.md](rules-compilation.md) (how a JSON rule becomes code, in depth), [c4-architecture.md](c4-architecture.md) (C4 diagrams), [design-camel-batch-writer.md](design-camel-batch-writer.md) (how the Camel route and write modes were designed).
 
 ## Overview
 
@@ -10,6 +10,27 @@ The app turns trade messages (JSON) into rows of an SFTR CSV report, and every o
 2. **Per message (repeated):** an input source (Kafka through a Camel route, or a file) hands a message to `RecordPipeline`. The pipeline turns it into a row with `MessageTransformer`, and a `ReportSink` decides when the row is written to that day's CSV file.
 
 A bad message never stops the run. It goes to that day's `.rejects` file and processing continues with the next one.
+
+## Startup flow
+
+Everything that can be wrong is checked here, before the first message.
+
+```mermaid
+flowchart TD
+    A["java -jar sftr-mapping-engine.jar<br/>profiles: file / rest (optional)"] --> B["Spring binds settings<br/>OutputProperties validates sftr.output.*<br/>SftrConstants builds lookups"]
+    B --> C["RecordProcessor created<br/>MappingConfigLoader.load():<br/>read rules, compile, smoke-run<br/>(see rules-compilation.md)"]
+    C --> D{"rules valid?"}
+    D -->|no| X["Startup fails:<br/>every problem listed"]
+    D -->|yes| E["ReportSinkConfig picks the sink<br/>PER_RECORD, COUNT or INTERVAL<br/>and the Clock in file-zone"]
+    E --> F{"which door?"}
+    F -->|"sftr.ingest=camel<br/>and sftr.kafka.enabled"| G["KafkaIngestRoute starts<br/>one Kafka consumer"]
+    F -->|"sftr.ingest=spring-kafka"| H["KafkaRecordListener starts<br/>(PER_RECORD only)"]
+    F -->|"sftr.input.file set"| I["FileInputRunner runs,<br/>then the app exits"]
+    F -->|"rest profile"| J["TestMessageController<br/>+ web server"]
+    G --> K["Waiting for messages<br/>(camel.main.run-controller keeps the JVM alive)"]
+    H --> K
+    J --> K
+```
 
 ## Per-message flow
 
@@ -30,6 +51,31 @@ Inside `RecordPipeline.handle()`:
 4. On failure, `RejectWriter.write(sourceRef, summary, day)` appends `sourceRef<TAB>summary` to the day's rejects file, then `sink.whenDurable(whenDurable)`. The summary never contains message content, because the data is regulatory.
 
 `whenDurable` is a callback that runs once the message's outcome is on disk: its row is in the CSV, or its reject line is written and every earlier row is in the CSV too.
+
+The whole path, with every branch:
+
+```mermaid
+flowchart TD
+    M["Message arrives<br/>(Kafka, file line or REST)"] --> H["RecordPipeline.handle(json, ref, whenDurable)<br/>takes the pipeline lock"]
+    H --> D["ReportDay.today()<br/>one clock reading"]
+    D --> V{"JSON object?"}
+    V -->|"empty, not JSON,<br/>not an object"| RJ
+    V -->|yes| RF["RefDataClient.fetch(message)<br/>POST, retries 5xx and timeouts"]
+    RF -->|"4xx, or unavailable<br/>after all attempts"| RJ
+    RF -->|ok| MP["RecordProcessor.process()<br/>run every active rule"]
+    MP -->|"a rule throws:<br/>Mapping failed for column X"| RJ
+    MP -->|row| SK["ReportSink.append(row, day, whenDurable)"]
+    RJ["RejectWriter.write(ref, reason, day)<br/>then sink.whenDurable(whenDurable)"]
+    SK --> Q{"write mode"}
+    Q -->|PER_RECORD| W1["open file, write, close<br/>callback runs now"]
+    Q -->|"COUNT / INTERVAL"| B["buffer the row<br/>(flush rules below)"]
+    B -->|"batch full, deadline, day change,<br/>midnight, cap, shutdown"| W2["open file, write batch, close<br/>callbacks run in order"]
+    W1 --> CB["whenDurable: OffsetCommitter.release()"]
+    W2 --> CB
+    RJ --> CB2["callback waits behind earlier<br/>buffered rows, then runs"]
+    CB2 --> CB
+    CB --> CM["consumer thread:<br/>OffsetCommitter.commitReleased()"]
+```
 
 ## Write modes (`sftr.output.write-mode`)
 
