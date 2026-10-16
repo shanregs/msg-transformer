@@ -54,7 +54,7 @@ flowchart TB
         timer["Flusher (new)<br/>one virtual thread<br/>timer for the age trigger"]
         rej["RejectWriter (new, extracted)<br/>appends to the rejects file"]
         csv["SftrCsvWriter<br/>openAppend, write rows"]
-        commit["OffsetCommitter (new)<br/>highest pending offset<br/>per partition"]
+        commit["OffsetCommitter (new)<br/>committable offsets per partition<br/>commits on the consumer thread"]
         props["OutputProperties (new)<br/>write-mode, batch-size,<br/>batch-interval, validated at startup"]
 
         route -->|message| tf
@@ -72,7 +72,7 @@ flowchart TB
         batch --> rej
         batch -->|rows written, release offsets| commit
         per -->|row written, release offset| commit
-        commit -->|commit| route
+        commit -->|commit on the consumer thread| route
         props -.->|selects sink and limits| sink
     end
 
@@ -181,7 +181,7 @@ sequenceDiagram
 
 ## Dynamic view 2: `INTERVAL` mode with a rejected message
 
-The rejected message goes to the rejects file at once, but its offset waits for the next flush so earlier buffered rows are not lost on a crash.
+The rejected message goes to the rejects file at once, but its offset waits for the next flush so earlier buffered rows are not lost on a crash. The timer thread writes the CSV; the commit runs on the consumer thread when the next message arrives.
 
 ```mermaid
 sequenceDiagram
@@ -200,8 +200,10 @@ sequenceDiagram
     Note over S: offset 7 queued behind 5 and 6
     X->>S: batch-interval elapsed, flush
     S->>F: open, write rows 5 and 6, close
-    S->>C: release offsets 5 to 7
-    C-->>R: commit offset 7
+    S->>C: mark offsets 5 to 7 committable
+    Note over C,R: the flusher cannot commit (spike result)
+    R->>S: next message arrives, offset 8
+    R->>C: commit offset 7 on the consumer thread
 ```
 
 ## Decision view: when does a write happen?

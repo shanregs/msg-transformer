@@ -1,6 +1,6 @@
 # Design: Camel Kafka route and configurable CSV write modes
 
-Branch: `camel-batch-writer` (created from `file-input`). Status: proposal, no code yet. Decisions confirmed: duplicates after a crash are acceptable, exactly three write modes, newest Camel that supports Spring Boot 4.1 and Java 25, `FileInputRunner` stays as it is.
+Branch: `camel-batch-writer` (created from `file-input`). Status: proposal, step 0 spike done (section 6a), no production code yet. Decisions confirmed: duplicates after a crash are acceptable, exactly three write modes, newest Camel that supports Spring Boot 4.1 and Java 25, `FileInputRunner` stays as it is.
 Diagrams: [c4-camel-batch-writer.md](c4-camel-batch-writer.md). Current design: [code-flow-and-classes.md](code-flow-and-classes.md).
 
 ## 1. What is being asked
@@ -54,7 +54,7 @@ Rule: an offset is committed only after every row at or below it has been writte
 
 - Every message ends as written or rejected. Both register a "pending commit" (topic, partition, offset) in the buffer.
 - A rejected message is written to the rejects file at once, but its offset is **not** committed at once. If rows 5 and 6 are still buffered and 7 is rejected, committing 7 would lose 5 and 6 on a crash.
-- When the buffer is flushed (rows written, file closed), the sink commits the highest pending offset per partition.
+- When the buffer is flushed (rows written, file closed), the sink marks the highest pending offset per partition as committable. The commit itself runs on the Kafka consumer thread (section 6a): immediately after a count flush, and on the next message after a timer flush.
 - In `PER_RECORD` mode the flush happens for every message, so this reduces to today's behaviour.
 - Camel setup: `autoCommitEnable=false`, `allowManualCommit=true`, and the route stores the `KafkaManualCommit` header in the sink with each row. Option names must be checked against the Camel version chosen.
 
@@ -69,7 +69,28 @@ Delivery guarantee is **at least once**. If the app crashes after the CSV write 
 
 - One `ReentrantLock` in `BatchingSink` guards the buffer and the file, so the consumer and the flusher never write at the same time.
 - The interval is measured from the oldest buffered row, not a fixed clock, so no row waits longer than `batch-interval`. The timer starts when the buffer goes from empty to non-empty.
-- **Risk to check in a spike:** a Kafka consumer is not thread-safe. If the flusher thread must commit offsets, confirm that `KafkaManualCommit.commit()` is safe from another thread in the chosen Camel version. If it is not, the flusher only writes the CSV and hands the offsets to the consumer thread, which commits them on its next poll. The cost is a slightly longer duplicate window after a crash when the topic is idle.
+- **Offset commit is bound to the consumer thread.** The spike (section 6a) proved the flusher thread cannot commit. It only writes the CSV and marks offsets committable; the consumer thread commits them.
+
+## 6a. Step 0 spike results
+
+Run on 2026-10-16 against a real single-node Kafka in Docker, with Java 25.0.4 and Spring Boot 4.1.1. Code is on the scratch branch `spike/camel-boot41` (`CamelKafkaSpikeTest`, run with `-Dspike=true` and a broker on `localhost:19092`).
+
+| Question | Result |
+| --- | --- |
+| Does Camel run on Spring Boot 4.1.1 and Java 25? | **Yes.** Camel **4.23.0** (newest release in Maven Central at the time) starts inside the Spring Boot context. All 78 existing tests still pass with the Camel starters on the classpath, and there is a single `kafka-clients` 4.2.1 (Spring's), so no version clash. |
+| Does the Kafka route consume and manual commit work? | **Yes**, with `allowManualCommit=true`, `autoCommitEnable=false`, `consumersCount=1`. |
+| Which thread runs the processor? | A **platform** thread named `Camel (camel-1) thread #1 - KafkaConsumer[...]`, not a virtual thread. Consistent with the recommendation: keep one consumer thread. |
+| Can another thread call `KafkaManualCommit.commit()`? | **No.** From a virtual thread, and from the main thread, it throws `ConcurrentModificationException: KafkaConsumer is not safe for multi-threaded access`, and nothing is committed. |
+| Does `commit()` work on the consumer thread? | **Yes.** Committing the last exchange of a batch from inside the route committed offset 4 for 4 messages. |
+| Does Camel call the route when the topic is idle (`batching=true`, `batchingIntervalMs`)? | **No.** The route was called once, with the 4 messages, and not again during 6 seconds of idle. There is no idle hook on the consumer thread. |
+
+What this changes in the design:
+
+- `PER_RECORD` and `COUNT`: no change. Both flush on the consumer thread, so the commit follows immediately.
+- `INTERVAL`: the timer flush writes the CSV on the flusher thread, but the offsets are committed on the consumer thread when the **next message arrives** (or never, if the topic stays idle). After a crash or restart the last batch is read again and written twice. You accepted duplicates, so this is within the agreed behaviour, but the duplicate window in `INTERVAL` mode is the whole idle period, not just the time between flush and commit.
+- Graceful shutdown: the consumer thread is already closing, so the final flush does not commit. The last batch is re-read on the next start. Same trade-off.
+
+Alternative not tested: Spring Kafka (already in the project) queues `Acknowledgment.acknowledge()` calls made from another thread and commits them on its own consumer thread, which would avoid the limitation. If a tight commit after the timer flush matters, that is a reason to keep `KafkaRecordListener` for ingestion and use Camel only elsewhere. Say if you want that checked before step 1.
 
 ## 7. Shutdown, errors, rejects
 
@@ -100,12 +121,12 @@ Delivery guarantee is **at least once**. If the app crashes after the CSV write 
 
 Each step is a separate commit, and the existing tests stay green after every one.
 
-0. **Spike (half a day).** On a scratch branch, import `camel-spring-boot-bom` at 4.20.0 or the newest later release, and add `camel-spring-boot-starter` and `camel-kafka-starter`. Confirm it starts on Spring Boot 4.1.1 and Java 25, and works with the `tools.jackson` (Jackson 3) setup already in use. Pin the version in `pom.xml` as a property. Confirm the manual-commit threading question in section 6. **Stop and re-plan if this fails**; the fallback is the Kafka client directly, with the same sink design.
+0. **Spike. Done**, see section 6a. Result: Camel 4.23.0 works on Spring Boot 4.1.1 and Java 25; the commit must run on the consumer thread. Pin `camel.version` and import `camel-spring-boot-bom` in step 5.
 1. **Refactor, no behaviour change.** Extract `MessageTransformer` and `RejectWriter` from `RecordPipeline`. Introduce `ReportSink` with a first implementation that matches today's behaviour. `RecordPipelineTest`, `GoldenFileTest`, `FileInputRunnerTest` and `KafkaRecordListenerTest` must pass unchanged.
 2. **`OutputProperties`.** Typed config with validation and tests for every mode and bad combination.
 3. **`PerRecordSink`.** Open, write, close per message. Test that the header is written once and rows survive reopen.
 4. **`BatchingSink`.** Count trigger, then interval trigger. Inject a `Clock` and a scheduler so tests run without real waiting. Test: order preserved, flush on shutdown, retry after a write failure, cap behaviour.
-5. **`KafkaIngestRoute` and `OffsetCommitter`.** Camel route with one consumer and manual commit. Tests with the Camel test support and a mock endpoint. One integration test with an embedded or containerised Kafka for the commit-after-flush rule.
+5. **`KafkaIngestRoute` and `OffsetCommitter`.** Camel route with one consumer and manual commit. `OffsetCommitter` keeps committable offsets from the flusher thread and commits them on the consumer thread (immediately after a count flush, on the next message after a timer flush). Tests with the Camel test support and a mock endpoint. One integration test with an embedded or containerised Kafka for the commit-after-flush rule.
 6. **Wire `sftr.ingest`.** Switch between the new route and the old listener so the change can be rolled back by config.
 7. **Golden test across modes.** The same input must give the same CSV rows in `PER_RECORD`, `COUNT` and `INTERVAL`.
 8. **Docs.** Update `code-flow-and-classes.md` and the C4 file on this branch, and remove the old listener once the route is proven.
@@ -116,11 +137,10 @@ Decided:
 
 1. Duplicate rows after a crash are acceptable (at least once).
 2. Exactly three write modes: `PER_RECORD`, `INTERVAL`, `COUNT`.
-3. Camel 4.20.0 or newer, whichever is the newest that starts on Spring Boot 4.1 and Java 25.
+3. Camel 4.20.0 or newer. Confirmed working: 4.23.0 on Spring Boot 4.1.1 and Java 25.
 4. `FileInputRunner` stays as it is and flushes at end of file.
 
 Still to confirm during the work:
 
-- The step 0 spike result for Spring Boot 4.1.
-- Whether `KafkaManualCommit.commit()` is safe from the flusher thread (section 6).
+- Whether to check Spring Kafka's cross-thread acknowledge before step 1 (end of section 6a).
 - In `INTERVAL` mode, the last rows wait up to `batch-interval` after the topic goes idle. This follows from the mode and is accepted unless you say otherwise.
