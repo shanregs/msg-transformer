@@ -1,0 +1,10 @@
+# Kafka mode: consume trade messages from Kafka only, no web server. This is also what you get with no profile.
+# Run with --spring.profiles.active=kafka
+sftr:
+  kafka:
+    enabled: true
+  rest:
+    enabled: false
+spring:
+  main:
+    web-application-type: none

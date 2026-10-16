@@ -30,12 +30,12 @@ sftr:
     config: classpath:sftr-field-mappings.json
 
   rest:
-    enabled: false                    # true (profile "rest") adds POST /api/test-message for quick tests
+    enabled: false                    # set by the profiles: rest or both turn on POST /api/test-message
 
   ingest: camel                       # camel (Camel Kafka route, needed for batch write modes) | spring-kafka (previous listener, PER_RECORD only)
 
   kafka:
-    enabled: true
+    enabled: true                     # set by the profiles: kafka or both = on, rest or file = off
     topic: trade-messages             # use ONE partition if global order matters
 
   output:

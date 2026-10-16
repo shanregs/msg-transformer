@@ -34,7 +34,7 @@ flowchart LR
         K["KafkaIngestRoute<br/>Camel, default"]
         L["KafkaRecordListener<br/>Spring Kafka, PER_RECORD only"]
         F["FileInputRunner<br/>.txt or .csv"]
-        R["TestMessageController<br/>rest profile"]
+        R["TestMessageController<br/>rest or both profile"]
     end
     subgraph core["Processing"]
         P["RecordPipeline<br/>one message at a time"]
@@ -98,7 +98,7 @@ flowchart LR
 | --- | --- | --- |
 | Camel Kafka consumer (one) | Polls, runs `RecordPipeline`, commits released offsets | A platform thread. The only thread that may commit. |
 | `sftr-batch-flusher` (one virtual thread) | Writes a batch when its deadline passes | Only for `COUNT` and `INTERVAL`. Started on the first buffered row. |
-| Web request thread | `POST /api/test-message` | Only with the `rest` profile. `RecordPipeline` serialises it with the consumer. |
+| Web request thread | `POST /api/test-message` | Only with the `rest` or `both` profile. `RecordPipeline` serialises it with the consumer. |
 | Main thread | Runs `FileInputRunner` in file mode | The app exits when it is done. |
 
 One `ReentrantLock` in `RecordPipeline` serialises messages; one in `BatchingSink` guards its buffer and file, so the consumer and flusher never write together.
@@ -139,14 +139,14 @@ Files are `<name>-yyyy-mm-dd.csv` and `<name>-yyyy-mm-dd.csv.rejects` (`rollover
 
 | Area | Where | Main keys |
 | --- | --- | --- |
-| Which door | `sftr.ingest`, `sftr.kafka.enabled`, `sftr.input.file`, `sftr.rest.enabled` | `camel` (default) or `spring-kafka`; profiles `file` and `rest` |
+| Which door | `sftr.ingest`, `sftr.kafka.enabled`, `sftr.input.file`, `sftr.rest.enabled` | `camel` (default) or `spring-kafka`; profiles `kafka`, `rest`, `both`, `file` |
 | Output | `sftr.output.*` | `file`, `rejects-file`, `write-mode`, `batch-size`, `batch-interval`, `max-buffered-records`, `rollover`, `file-zone`, `file-date` |
 | Reference data | `sftr.refdata.*` | `base-url`, `path`, timeouts, `max-attempts`, `backoff`, `request-fields` |
 | Rules | `sftr.mapping.config` + `sftr-field-mappings.json` | one rule per column |
 | Constants | `sftr.constants.*` | `values`, `lists`, `lookups` |
 | Kafka | `spring.kafka.*`, `sftr.kafka.topic` | brokers, group id, offset reset |
 
-Profiles: `file` turns Kafka off (run with `--sftr.input.file=<path>`); `rest` adds the test endpoint and a web server.
+Run modes are profiles: `kafka` (default, Kafka only, no web server), `rest` (test endpoint only, no Kafka), `both` (Kafka and the test endpoint) and `file` (Kafka off; run with `--sftr.input.file=<path>`). Use one of `kafka`, `rest`, `both`. See [running-locally.md](running-locally.md).
 
 ## 11. Extending
 

@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * A quick way to push one message through the same flow as Kafka and the file input: reference-data call,
- * mapping, write to the CSV. Only present when {@code sftr.rest.enabled=true} (the {@code rest} profile).
+ * mapping, write to the CSV. Only present when {@code sftr.rest.enabled=true} (the {@code rest} or {@code both} profile).
  *
  * <pre>
  * curl -X POST localhost:8080/api/test-message -H "Content-Type: application/json" -d '{"trade_type":"PO",...}'

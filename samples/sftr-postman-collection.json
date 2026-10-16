@@ -1,0 +1,910 @@
+{
+  "info": {
+    "name": "SFTR Mapping Engine - test message endpoint",
+    "description": "Sends one message at a time to POST /api/test-message, which runs the whole flow (reference data, mapping rules, write to the CSV).\n\nStart the app with the rest or both profile (see docs/running-locally.md) and the reference-data stub (python samples/refdata-stub.py). Change the baseUrl collection variable if the port is not 8080.\n\nFolder D needs the app started with --sftr.output.write-mode=COUNT --sftr.output.batch-size=3; run its requests in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ],
+  "item": [
+    {
+      "name": "A. Rows are written",
+      "item": [
+        {
+          "name": "A1 London entity, trade PO",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Expect one CSV row: CP_RepCp 549300CP1 plus zeros, CP_NatureOfRepCp C, CP_SecOfRepCp CDTI, CP_BranchOfRepCp GB (the LDNBB prefix is a London entity), CP_CpSide GIVE (PO is a GIVE code).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A1\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP1\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A2 non-London entity, trade PI",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Expect CP_BranchOfRepCp empty (BMOCM01 is not a London prefix) and CP_CpSide TAKE (PI is a TAKE code).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A2\",\n  \"trade_type\": \"PI\",\n  \"bmoLegalEntity\": \"BMOCM01\",\n  \"counterpartyId\": \"CP2\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A3 LDN- prefix, trade RP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "LDN- is the second London prefix: CP_BranchOfRepCp GB. RP is a GIVE code: CP_CpSide GIVE.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A3\",\n  \"trade_type\": \"RP\",\n  \"bmoLegalEntity\": \"LDN-02\",\n  \"counterpartyId\": \"CP3\",\n  \"group_cd\": \"G2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A4 trade LP gives TAKE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "LP is in the TAKE list of the cpSide lookup: CP_CpSide TAKE.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A4\",\n  \"trade_type\": \"LP\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP4\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A5 unknown trade_type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "A code that is not in the lookup gives an empty CP_CpSide. The row is still written.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A5\",\n  \"trade_type\": \"XX\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP5\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A6 trade_type missing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "A missing field gives an empty CP_CpSide. The row is still written.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A6\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP6\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A7 reference data has no nature",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The stub leaves out natureOfReportingCounterparty for counterpartyId NONATURE, so CP_NatureOfRepCp falls back to the default F.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"A7\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"NONATURE\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "B. Rejected messages",
+      "item": [
+        {
+          "name": "B1 malformed JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
+                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "HTTP 200 with outcome REJECTED. The rejects file gets: rest-<n> TAB Malformed JSON.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{not json",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B2 empty body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
+                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The rejects file gets: rest-<n> TAB Empty message.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B3 JSON array, not an object",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
+                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The rejects file gets: rest-<n> TAB Not a JSON object.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[1, 2]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "C. Reference data failures",
+      "item": [
+        {
+          "name": "C1 reference data answers 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
+                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "A 4xx is never retried. The rejects file gets: Reference data HTTP 400. Needs the stub (samples/refdata-stub.py).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"C1\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"FAIL4XX\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "C2 reference data answers 503",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
+                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "A 5xx is retried (3 attempts, short backoff, under a second) and then rejected: Reference data unavailable.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"C2\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"FAIL5XX\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        },
+        {
+          "name": "C3 reference data too slow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
+                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The stub waits 8 seconds, longer than the 5 second read timeout. Three attempts take about 15 seconds, then: Reference data unavailable. Be patient.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"C3\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"SLOW\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "D. Batch modes (start with --sftr.output.write-mode=COUNT --sftr.output.batch-size=3)",
+      "item": [
+        {
+          "name": "D1 first row, flush=false",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The row waits in the batch: no report file yet.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"D1\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP1\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message?flush=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ],
+              "query": [
+                {
+                  "key": "flush",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "D2 second row, flush=false",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Still waiting: no report file yet.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"D2\",\n  \"trade_type\": \"PI\",\n  \"bmoLegalEntity\": \"BMOCM01\",\n  \"counterpartyId\": \"CP2\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message?flush=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ],
+              "query": [
+                {
+                  "key": "flush",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "D3 third row, flush=false",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The batch of 3 is full: the report file is created with a header and 3 rows.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"D3\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP1\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message?flush=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ],
+              "query": [
+                {
+                  "key": "flush",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "D4 fourth row, flush=false",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Waits in a new batch: the file still has 3 rows.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"D4\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP1\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message?flush=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ],
+              "query": [
+                {
+                  "key": "flush",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "D5 fifth row, default flush=true",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
+                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('flushed is true', function () { pm.expect(r.flushed).to.eql(true); });",
+                  "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "flush=true (the default) writes everything waiting: the file now has 5 rows.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trade_ref\": \"D5\",\n  \"trade_type\": \"PO\",\n  \"bmoLegalEntity\": \"LDNBB01\",\n  \"counterpartyId\": \"CP1\",\n  \"group_cd\": \"G1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-message",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-message"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

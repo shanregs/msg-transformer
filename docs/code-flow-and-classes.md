@@ -26,7 +26,7 @@ flowchart TD
     F -->|"sftr.ingest=camel<br/>and sftr.kafka.enabled"| G["KafkaIngestRoute starts<br/>one Kafka consumer"]
     F -->|"sftr.ingest=spring-kafka"| H["KafkaRecordListener starts<br/>(PER_RECORD only)"]
     F -->|"sftr.input.file set"| I["FileInputRunner runs,<br/>then the app exits"]
-    F -->|"rest profile"| J["TestMessageController<br/>+ web server"]
+    F -->|"rest or both profile"| J["TestMessageController<br/>+ web server"]
     G --> K["Waiting for messages<br/>(camel.main.run-controller keeps the JVM alive)"]
     H --> K
     J --> K
@@ -39,8 +39,8 @@ Both input components call the same method, `RecordPipeline.handle(json, sourceR
 - `KafkaIngestRoute` (default, `sftr.ingest: camel`) is a Camel route with one Kafka consumer. Messages are handled one at a time on the consumer thread. Offsets are not committed automatically: after each message the route commits the offsets that `OffsetCommitter` holds (see "Offsets" below).
 - `KafkaRecordListener` (`sftr.ingest: spring-kafka`) is the previous Spring Kafka listener. It acknowledges right after handling, so it only starts with `write-mode: PER_RECORD`.
 - `FileInputRunner` runs only when `sftr.input.file` is set. A `.txt` file is read as one JSON message per line (blank lines skipped). A `.csv` file uses its header row as keys, and each row becomes a flat JSON object. It counts rows written vs. rejected, never stops on a bad line, and calls `pipeline.flush()` at the end so batch modes write the last rows.
-- `TestMessageController` (`POST /api/test-message`) is a quick-test door, present only with the `rest` profile (`sftr.rest.enabled: true`). See "Quick test endpoint" below.
-- Both Kafka components are off when `sftr.kafka.enabled: false` (the `file` profile).
+- `TestMessageController` (`POST /api/test-message`) is a quick-test door, present only with the `rest` or `both` profile (`sftr.rest.enabled: true`). See "Quick test endpoint" below.
+- Which doors are on is chosen by profile, see "Run modes" below. Both Kafka components are off when `sftr.kafka.enabled: false` (the `rest` and `file` profiles).
 - The app is kept alive by `camel.main.run-controller`, which follows `sftr.kafka.enabled`: Camel's Kafka consumer threads are daemon threads, so without it the JVM exits right after startup (found in a smoke run). In file mode it is false, so the app exits when the file is done.
 
 Inside `RecordPipeline.handle()`:
@@ -109,9 +109,22 @@ An offset is committed only after everything up to it is on disk, so with batchi
 
 Delivery is at least once: after a crash or restart, messages whose rows were written but whose offset was not yet committed are read again and written twice. In `INTERVAL` mode that window lasts until the next message arrives.
 
+## Run modes
+
+One profile picks the mode:
+
+| Profile | Kafka consumer | REST endpoint | Web server |
+| --- | --- | --- | --- |
+| `kafka` (also the default with no profile) | on | off | none |
+| `rest` | off | on | Tomcat on `server.port` (default 8080) |
+| `both` | on | on | Tomcat on `server.port` |
+| `file` | off | off | none; reads `sftr.input.file`, then exits |
+
+They are the files `application-kafka.yml`, `application-rest.yml`, `application-both.yml` and `application-file.yml`, which set `sftr.kafka.enabled`, `sftr.rest.enabled` and `spring.main.web-application-type`. In `both` mode the Kafka consumer thread and a web request thread share `RecordPipeline`; its lock handles messages one at a time. Step by step instructions, a Postman collection and test cases: [running-locally.md](running-locally.md).
+
 ## Quick test endpoint
 
-Start the app with `--spring.profiles.active=rest` (add `file` as well, `rest,file`, if Kafka is not wanted). It also starts a web server on `server.port` (default 8080).
+Start the app with `--spring.profiles.active=rest` (REST only) or `both` (REST and Kafka). It starts a web server on `server.port` (default 8080; use `--server.port=<port>` if that is busy).
 
 ```
 curl -X POST localhost:8080/api/test-message -H "Content-Type: application/json"      -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}'
@@ -176,7 +189,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `output.RejectWriter` | Appends reject lines to the day's rejects file and builds the content-free reason. |
 | `output.SftrCsvWriter` | Opens the CSV (header from the `Column` list, only for a new or empty file), writes rows, reads each value back from the report by reflection. |
 
-**Configuration files.** `application-rest.yml` turns on the test endpoint and the web server. `application.yml` holds the ingest choice, Kafka, output settings, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `sftr-field-mappings.json` is the column definitions.
+**Configuration files.** `application-kafka.yml`, `application-rest.yml` and `application-both.yml` choose the run mode. `application.yml` holds the ingest choice, Kafka, output settings, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `sftr-field-mappings.json` is the column definitions.
 
 ## Worked example: one line end to end
 
