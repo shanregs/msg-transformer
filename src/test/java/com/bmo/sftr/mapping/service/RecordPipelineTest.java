@@ -45,7 +45,7 @@ class RecordPipelineTest {
     private RecordPipeline pipeline() {
         RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
         return new RecordPipeline(refData, processor, new SftrCsvWriter(','), TestSupport.realConstants(),
-                TestSupport.MAPPER, out.toString(), "", true, "2026-01-01");
+                TestSupport.MAPPER, out.toString(), "", "2026-01-01");
     }
 
     private static String msg(String ref, String tradeType) {
@@ -123,5 +123,15 @@ class RecordPipelineTest {
         assertThat(lines).hasSize(3);
         assertThat(lines.stream().filter(l -> l.startsWith("IM_SubmitterID,")).count()).isEqualTo(1);
         assertThat(sides()).containsExactly("GIVE", "TAKE");
+    }
+
+    @Test
+    void callbackRunsForWrittenAndRejectedMessagesOnceTheyAreDurable() throws Exception {
+        RecordPipeline p = pipeline();
+        List<String> done = new java.util.ArrayList<>();
+        p.handle(msg("1", "PO"), "t-0@0", () -> done.add("written"));
+        p.handle("{not json", "t-0@1", () -> done.add("rejected"));
+        assertThat(done).containsExactly("written", "rejected");
+        assertThat(sides()).containsExactly("GIVE");
     }
 }

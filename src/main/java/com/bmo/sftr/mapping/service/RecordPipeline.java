@@ -1,37 +1,37 @@
 package com.bmo.sftr.mapping.service;
 
 import com.bmo.sftr.mapping.engine.RecordProcessor;
-import com.bmo.sftr.mapping.model.ProcessingContext;
 import com.bmo.sftr.mapping.model.SftrConstants;
 import com.bmo.sftr.mapping.model.SftrTransactionReport;
+import com.bmo.sftr.mapping.output.OutputFileResolver;
+import com.bmo.sftr.mapping.output.OutputProperties;
+import com.bmo.sftr.mapping.output.OutputProperties.Rollover;
+import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
+import com.bmo.sftr.mapping.output.PerRecordSink;
+import com.bmo.sftr.mapping.output.RejectWriter;
+import com.bmo.sftr.mapping.output.ReportDay;
+import com.bmo.sftr.mapping.output.ReportSink;
 import com.bmo.sftr.mapping.output.SftrCsvWriter;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
-import jakarta.annotation.PreDestroy;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import java.time.ZoneId;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpStatusCodeException;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Handles ONE message at a time, on the calling thread, and appends its row to the output file.
+ * Handles ONE message at a time, on the calling thread: {@link MessageTransformer} builds the row,
+ * the {@link ReportSink} writes it (or buffers it), and a message that cannot be processed goes to the {@link RejectWriter}.
  * Rows therefore appear in exactly the order messages are handed in.
  *
- * Not thread-safe by design: it owns one open output file. The caller must be single-threaded
+ * Not thread-safe by design: the sink owns one open output file. The caller must be single-threaded
  * (the Kafka listener runs with concurrency 1).
  *
  * <ul>
- *   <li>Written: the row is appended (and flushed, by default) before this method returns.</li>
+ *   <li>Written: the row was handed to the sink (with the default write mode it is on disk before this method returns).</li>
  *   <li>Rejected: the message could not be processed (malformed JSON, reference data failure after
  *       its own retries, mapping error). A line goes to the rejects file and handling carries on.</li>
  *   <li>IOException: the output or rejects file could not be written; the caller logs it and moves on.</li>
@@ -40,40 +40,36 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class RecordPipeline {
 
-    private static final Logger log = LoggerFactory.getLogger(RecordPipeline.class);
-
     public enum Outcome { WRITTEN, REJECTED }
 
-    private final RefDataClient refData;
-    private final RecordProcessor processor;
-    private final SftrCsvWriter csvWriter;
-    private final SftrConstants constants;
-    private final ObjectMapper mapper;
-    private final Path outputFile;
-    private final Path rejectsFile;
-    private final boolean flushEachRecord;
-    private final String configuredFileDate;
+    private final MessageTransformer transformer;
+    private final ReportSink sink;
+    private final RejectWriter rejects;
+    private final ReportDay reportDay;
 
-    private SftrCsvWriter.Session csv;
-    private BufferedWriter rejects;
+    @Autowired
+    public RecordPipeline(MessageTransformer transformer, ReportSink sink, RejectWriter rejects, ReportDay reportDay) {
+        this.transformer = transformer;
+        this.sink = sink;
+        this.rejects = rejects;
+        this.reportDay = reportDay;
+    }
 
-    public RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
-                          SftrConstants constants, ObjectMapper mapper,
-                          @Value("${sftr.output.file}") String outputFile,
-                          @Value("${sftr.output.rejects-file:}") String rejectsFile,
-                          @Value("${sftr.output.flush-each-record:true}") boolean flushEachRecord,
-                          @Value("${sftr.output.file-date:}") String configuredFileDate) {
-        this.refData = refData;
-        this.processor = processor;
-        this.csvWriter = csvWriter;
-        this.constants = constants;
-        this.mapper = mapper;
-        this.outputFile = Path.of(outputFile);
-        this.rejectsFile = (rejectsFile == null || rejectsFile.isBlank())
-                ? this.outputFile.resolveSibling(this.outputFile.getFileName() + ".rejects")
-                : Path.of(rejectsFile);
-        this.flushEachRecord = flushEachRecord;
-        this.configuredFileDate = configuredFileDate;
+    /** Builds the collaborators by hand, one file with the configured name (no daily files). */
+    RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
+                   SftrConstants constants, ObjectMapper mapper, String outputFile, String rejectsFile,
+                   String configuredFileDate) {
+        this(refData, processor, csvWriter, constants, mapper, new OutputProperties(outputFile, rejectsFile,
+                configuredFileDate, Rollover.NONE, ZoneId.of("Asia/Kolkata"), WriteMode.PER_RECORD, 10,
+                Duration.ofMinutes(5), 1000), Clock.system(ZoneId.of("Asia/Kolkata")));
+    }
+
+    /** Builds the collaborators by hand from the given settings and clock. */
+    RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
+                   SftrConstants constants, ObjectMapper mapper, OutputProperties props, Clock clock) {
+        this(new MessageTransformer(refData, processor, constants, mapper),
+                new PerRecordSink(csvWriter, processor, new OutputFileResolver(props)),
+                new RejectWriter(new OutputFileResolver(props)), new ReportDay(props, clock));
     }
 
     /**
@@ -81,58 +77,36 @@ public class RecordPipeline {
      * @param sourceRef where it came from (for example topic-partition@offset); goes to the rejects file
      */
     public Outcome handle(String json, String sourceRef) throws IOException {
+        return handle(json, sourceRef, () -> { });
+    }
+
+    /**
+     * As {@link #handle(String, String)}, and runs {@code whenDurable} once the outcome is safely on disk:
+     * the row is in the CSV, or the reject line is written and every earlier row is in the CSV too.
+     * Kafka uses this to release an offset only when nothing before it can still be lost.
+     */
+    public Outcome handle(String json, String sourceRef, Runnable whenDurable) throws IOException {
+        LocalDate day = reportDay.today();             // once per message: the row's date and its file agree
         SftrTransactionReport report;
         try {
-            report = map(json);
+            report = transformer.transform(json, day);
         } catch (RuntimeException e) {                 // includes reference data failures (the client already retries)
-            reject(sourceRef, summary(e));
+            rejects.write(sourceRef, RejectWriter.summarize(e), day);
+            sink.whenDurable(whenDurable);
             return Outcome.REJECTED;
         }
-        if (csv == null) csv = csvWriter.openAppend(outputFile, processor.columnDefs());
-        csv.write(report);
-        if (flushEachRecord) csv.flush();
+        sink.append(report, day, whenDurable);
         return Outcome.WRITTEN;
     }
 
-    private SftrTransactionReport map(String json) {
-        if (json == null || json.isBlank()) throw new IllegalArgumentException("Empty message");
-        JsonNode message = mapper.readTree(json);
-        if (message == null || !message.isObject()) throw new IllegalArgumentException("Not a JSON object");
-        JsonNode ref = refData.fetch(message);
-        String fileDate = (configuredFileDate == null || configuredFileDate.isBlank())
-                ? LocalDate.now().toString() : configuredFileDate;
-        return processor.process(message, new ProcessingContext(ref, constants, fileDate));
+    /** Writes any rows still waiting in the sink (end of a file run, shutdown). */
+    public void flush() throws IOException {
+        sink.flush();
     }
 
-    private void reject(String sourceRef, String summary) throws IOException {
-        if (rejects == null) {
-            Path parent = rejectsFile.toAbsolutePath().getParent();
-            if (parent != null) Files.createDirectories(parent);
-            rejects = Files.newBufferedWriter(rejectsFile, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        }
-        rejects.write(sourceRef + "\t" + summary + "\n");
-        rejects.flush();
-        log.warn("Rejected {}: {}", sourceRef, summary);
-    }
-
-    /** Error summary for the rejects file. Never includes message content (parser messages quote the input). */
-    private static String summary(Throwable t) {
-        String text = switch (t) {
-            case JacksonException _ -> "Malformed JSON";
-            case HttpStatusCodeException h -> "Reference data HTTP " + h.getStatusCode().value();
-            case RefDataClient.UnavailableException _ -> "Reference data unavailable";
-            case IllegalStateException e when e.getMessage() != null -> e.getMessage();
-            case IllegalArgumentException e when e.getMessage() != null
-                    && (e.getMessage().startsWith("Empty") || e.getMessage().startsWith("Not a JSON")) -> e.getMessage();
-            default -> t.getClass().getSimpleName();
-        };
-        return text.replaceAll("[\\t\\r\\n]+", " ");
-    }
-
-    @PreDestroy
+    /** For tests that build the pipeline by hand; Spring closes the sink and the reject writer itself. */
     void close() throws IOException {
-        if (csv != null) csv.close();
-        if (rejects != null) rejects.close();
+        sink.close();
+        rejects.close();
     }
 }
