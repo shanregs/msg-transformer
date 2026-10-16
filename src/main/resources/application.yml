@@ -31,6 +31,10 @@ sftr:
     file: ./data/sftr-report.csv      # rows are appended, in arrival order
     rejects-file:                     # default: <file>.rejects
     flush-each-record: true           # flush before the offset is acknowledged
+    write-mode: PER_RECORD            # PER_RECORD | INTERVAL | COUNT (read and validated; the sinks arrive in the next steps)
+    batch-size: 10                    # COUNT: write when this many rows are waiting
+    batch-interval: 5m                # INTERVAL: write when the oldest waiting row is this old
+    max-buffered-records: 1000        # safety cap on rows held in memory
     file-date:                        # optional ISO date; default is today
 
   csv:
