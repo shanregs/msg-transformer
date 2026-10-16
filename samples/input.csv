@@ -1,0 +1,8 @@
+trade_ref,trade_type,bmoLegalEntity,counterpartyId,group_cd,delegated,cparty_branch_cd
+T1,PO,LDNBB01,CP1,G1,N,
+T2,PI,LDN-02,CP2,G1,N,
+T3,RP,BMOCM01,CP3,G2,Y,GB
+T4,L,BMOCM01,CP4,G2,N,
+T5,XX,BMOCM01,CP5,G2,N,
+,,,,,,
+T7,B,LDNBB01,CP7,G3,N,

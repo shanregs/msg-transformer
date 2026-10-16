@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
@@ -22,16 +23,30 @@ public class SftrCsvWriter {
         this.delimiter = delimiter;
     }
 
+    /** Creates or truncates the file and writes the header. */
     public Session open(Path file, List<MappingConfigLoader.Column> columns) throws IOException {
+        return open(file, columns, false);
+    }
+
+    /** Appends to an existing file (the header is written only when the file is new or empty). */
+    public Session openAppend(Path file, List<MappingConfigLoader.Column> columns) throws IOException {
+        return open(file, columns, true);
+    }
+
+    private Session open(Path file, List<MappingConfigLoader.Column> columns, boolean append) throws IOException {
         Path parent = file.toAbsolutePath().getParent();
         if (parent != null) Files.createDirectories(parent);
-        String[] header = columns.stream().map(MappingConfigLoader.Column::name).toArray(String[]::new);
+        boolean header = !append || !Files.exists(file) || Files.size(file) == 0;
+        String[] names = columns.stream().map(MappingConfigLoader.Column::name).toArray(String[]::new);
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setDelimiter(delimiter)
                 .setRecordSeparator("\n")
-                .setHeader(header)
+                .setHeader(names)
+                .setSkipHeaderRecord(!header)
                 .get();
-        BufferedWriter out = Files.newBufferedWriter(file, StandardCharsets.UTF_8);
+        BufferedWriter out = append
+                ? Files.newBufferedWriter(file, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+                : Files.newBufferedWriter(file, StandardCharsets.UTF_8);
         try {
             return new Session(new CSVPrinter(out, format), columns);   // writes the header
         } catch (IOException | RuntimeException e) {
@@ -56,6 +71,10 @@ public class SftrCsvWriter {
                 row[i] = v == null ? null : String.valueOf(v);
             }
             printer.printRecord(row);
+        }
+
+        public void flush() throws IOException {
+            printer.flush();
         }
 
         @Override

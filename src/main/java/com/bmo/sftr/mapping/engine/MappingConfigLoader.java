@@ -1,5 +1,6 @@
 package com.bmo.sftr.mapping.engine;
 
+import com.bmo.sftr.mapping.functions.DateHelpers;
 import com.bmo.sftr.mapping.functions.SftrMappingFunctions;
 import com.bmo.sftr.mapping.model.FieldMapping;
 import com.bmo.sftr.mapping.model.MappingFunction;
@@ -154,7 +155,7 @@ public class MappingConfigLoader {
                 ZoneId inZone = optionalZone(m.inputZoneRef());
                 ZoneId outZone = optionalZone(m.outputZoneRef());
                 DateTimeFormatter inFmt = inPattern == null
-                        ? DateTimeFormatter.ISO_DATE_TIME : DateTimeFormatter.ofPattern(inPattern);
+                        ? DateHelpers.ISO_FLEXIBLE : DateTimeFormatter.ofPattern(inPattern);
                 DateTimeFormatter outFmt = outPattern == null
                         ? (m.formatter() == FieldMapping.Formatter.DATE
                                 ? DateTimeFormatter.ISO_LOCAL_DATE : DateTimeFormatter.ISO_OFFSET_DATE_TIME)

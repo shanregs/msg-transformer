@@ -5,26 +5,36 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.bmo.sftr.mapping.TestSupport;
+import com.bmo.sftr.mapping.kafka.KafkaRecordListener;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-@SpringBootTest
+/** Full application context (Kafka consumer not started) and a byte-for-byte comparison of the output. */
+@SpringBootTest(properties = {"spring.kafka.listener.auto-startup=false", "sftr.output.file-date=2026-01-01"})
 class GoldenFileTest {
+
+    private static Path outDir;
+
+    @DynamicPropertySource
+    static void output(DynamicPropertyRegistry registry) throws IOException {
+        outDir = Files.createTempDirectory("golden");
+        registry.add("sftr.output.file", () -> outDir.resolve("out.csv").toString());
+    }
 
     @MockitoBean
     RefDataClient refDataClient;
 
-    @Autowired SftrReportService service;
-
-    @TempDir
-    Path dir;
+    @Autowired RecordPipeline pipeline;
+    @Autowired KafkaRecordListener listener;
 
     @Test
     void pipelineMatchesGoldenFile() throws Exception {
@@ -32,10 +42,10 @@ class GoldenFileTest {
                 {"find_sftr_party":{"values":{"lei":"549300ABCDEFGHIJ0001"}},
                  "find_sftr_party_sector":{"values":{"natureOfReportingCounterparty":"C","sector":"CDTI"}}}"""));
 
-        Path out = dir.resolve("out.csv");
-        service.run(new ClassPathResource("golden/input.jsonl").getFile().toPath(), out, "2026-01-01");
+        String line = Files.readString(new ClassPathResource("golden/input.jsonl").getFile().toPath()).strip();
+        pipeline.handle(line, "trade-messages-0@0");
 
         byte[] expected = new ClassPathResource("golden/expected.csv").getContentAsByteArray();
-        assertThat(Files.readAllBytes(out)).isEqualTo(expected);
+        assertThat(Files.readAllBytes(outDir.resolve("out.csv"))).isEqualTo(expected);
     }
 }

@@ -65,7 +65,14 @@ public class RefDataClient {
                 if (attempt < p.maxAttempts()) pause(p.backoff().toMillis() * attempt);
             }
         }
-        throw new IllegalStateException("Reference data call failed after " + p.maxAttempts() + " attempts", last);
+        throw new UnavailableException("Reference data call failed after " + p.maxAttempts() + " attempts", last);
+    }
+
+    /** The service stayed unavailable (timeouts or 5xx) for every attempt. Transient: the record is not bad. */
+    public static class UnavailableException extends IllegalStateException {
+        public UnavailableException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private static void pause(long millis) {
