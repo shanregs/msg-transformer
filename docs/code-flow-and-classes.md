@@ -18,7 +18,9 @@ Both input components call the same method, `RecordPipeline.handle(json, sourceR
 - `KafkaIngestRoute` (default, `sftr.ingest: camel`) is a Camel route with one Kafka consumer. Messages are handled one at a time on the consumer thread. Offsets are not committed automatically: after each message the route commits the offsets that `OffsetCommitter` holds (see "Offsets" below).
 - `KafkaRecordListener` (`sftr.ingest: spring-kafka`) is the previous Spring Kafka listener. It acknowledges right after handling, so it only starts with `write-mode: PER_RECORD`.
 - `FileInputRunner` runs only when `sftr.input.file` is set. A `.txt` file is read as one JSON message per line (blank lines skipped). A `.csv` file uses its header row as keys, and each row becomes a flat JSON object. It counts rows written vs. rejected, never stops on a bad line, and calls `pipeline.flush()` at the end so batch modes write the last rows.
+- `TestMessageController` (`POST /api/test-message`) is a quick-test door, present only with the `rest` profile (`sftr.rest.enabled: true`). See "Quick test endpoint" below.
 - Both Kafka components are off when `sftr.kafka.enabled: false` (the `file` profile).
+- The app is kept alive by `camel.main.run-controller`, which follows `sftr.kafka.enabled`: Camel's Kafka consumer threads are daemon threads, so without it the JVM exits right after startup (found in a smoke run). In file mode it is false, so the app exits when the file is done.
 
 Inside `RecordPipeline.handle()`:
 
@@ -61,6 +63,16 @@ An offset is committed only after everything up to it is on disk, so with batchi
 
 Delivery is at least once: after a crash or restart, messages whose rows were written but whose offset was not yet committed are read again and written twice. In `INTERVAL` mode that window lasts until the next message arrives.
 
+## Quick test endpoint
+
+Start the app with `--spring.profiles.active=rest` (add `file` as well, `rest,file`, if Kafka is not wanted). It also starts a web server on `server.port` (default 8080).
+
+```
+curl -X POST localhost:8080/api/test-message -H "Content-Type: application/json"      -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}'
+```
+
+The message goes through the same `RecordPipeline` as Kafka and file input: reference-data call, mappings, sink. The answer is JSON: `outcome` (`WRITTEN` or `REJECTED`, both HTTP 200), `flushed`, `reportFile` (today's CSV) and `rejectsFile` (only when rejected). With `flush=true` (default) a row waiting in a batch is written at once, so it is in the CSV when the call returns; use `?flush=false` to see the batch modes behave as in production. `RecordPipeline` serialises its calls with a lock, so this endpoint can run next to the Kafka consumer.
+
 ## How the JSON config becomes running logic
 
 `MappingConfigLoader.load()` runs once at startup and reads `sftr-field-mappings.json` into `FieldMapping` records, one per CSV column. Each row produces:
@@ -93,6 +105,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `SftrMappingApplication` | Spring Boot entry point. Registers `SftrConstants`, `RefDataClient.Properties` and `OutputProperties` as configuration properties. |
 | `camel.KafkaIngestRoute` | Camel route: one Kafka consumer, manual offset commit, calls the pipeline, then commits released offsets. Stops itself before the sink closes. |
 | `camel.OffsetCommitter` | Holds offsets whose rows are on disk until the consumer thread commits them. Keeps the highest per partition. |
+| `rest.TestMessageController` | Optional `POST /api/test-message` for quick tests (`rest` profile only). |
 | `kafka.KafkaRecordListener` | Previous Spring Kafka listener, used when `sftr.ingest=spring-kafka`. `PER_RECORD` only. |
 | `input.FileInputRunner` | Batch alternative to Kafka. Reads a `.txt` (JSON lines) or `.csv` file, calls the pipeline per line, flushes at the end. |
 | `service.RecordPipeline` | Coordinates one message: take the day, transform, append to the sink or write a reject, run the callback. Single-threaded by design. |
@@ -117,7 +130,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `output.RejectWriter` | Appends reject lines to the day's rejects file and builds the content-free reason. |
 | `output.SftrCsvWriter` | Opens the CSV (header from the `Column` list, only for a new or empty file), writes rows, reads each value back from the report by reflection. |
 
-**Configuration files.** `application.yml` holds the ingest choice, Kafka, output settings, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `sftr-field-mappings.json` is the column definitions.
+**Configuration files.** `application-rest.yml` turns on the test endpoint and the web server. `application.yml` holds the ingest choice, Kafka, output settings, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `sftr-field-mappings.json` is the column definitions.
 
 ## Worked example: one line end to end
 

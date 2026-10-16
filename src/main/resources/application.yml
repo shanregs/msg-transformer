@@ -15,6 +15,12 @@ spring:
     listener:
       ack-mode: manual_immediate
 
+camel:
+  main:
+    # Camel's Kafka consumer threads are daemon threads, so without this the JVM exits right after startup.
+    # Follows sftr.kafka.enabled, so the file mode still exits when the file has been processed.
+    run-controller: ${sftr.kafka.enabled:true}
+
 logging:
   level:
     com.bmo.sftr: INFO
@@ -22,6 +28,9 @@ logging:
 sftr:
   mapping:
     config: classpath:sftr-field-mappings.json
+
+  rest:
+    enabled: false                    # true (profile "rest") adds POST /api/test-message for quick tests
 
   ingest: camel                       # camel (Camel Kafka route, needed for batch write modes) | spring-kafka (previous listener, PER_RECORD only)
 

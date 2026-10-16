@@ -1,0 +1,10 @@
+# Run with --spring.profiles.active=rest to add POST /api/test-message (a quick way to push one message
+# through the whole flow). Combine with the file profile if Kafka is not wanted: rest,file
+spring:
+  main:
+    web-application-type: servlet
+sftr:
+  rest:
+    enabled: true
+server:
+  port: 8080

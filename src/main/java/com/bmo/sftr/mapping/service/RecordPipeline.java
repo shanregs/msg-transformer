@@ -18,6 +18,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.concurrent.locks.ReentrantLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -27,8 +28,8 @@ import tools.jackson.databind.ObjectMapper;
  * the {@link ReportSink} writes it (or buffers it), and a message that cannot be processed goes to the {@link RejectWriter}.
  * Rows therefore appear in exactly the order messages are handed in.
  *
- * Not thread-safe by design: the sink owns one open output file. The caller must be single-threaded
- * (the Kafka listener runs with concurrency 1).
+ * Calls are serialised by a lock, because the sink and the reject writer own output files: the Kafka consumer
+ * and the optional REST test endpoint can both call in, and rows still come out in the order calls were made.
  *
  * <ul>
  *   <li>Written: the row was handed to the sink (with the default write mode it is on disk before this method returns).</li>
@@ -46,6 +47,7 @@ public class RecordPipeline {
     private final ReportSink sink;
     private final RejectWriter rejects;
     private final ReportDay reportDay;
+    private final ReentrantLock lock = new ReentrantLock();
 
     @Autowired
     public RecordPipeline(MessageTransformer transformer, ReportSink sink, RejectWriter rejects, ReportDay reportDay) {
@@ -86,22 +88,32 @@ public class RecordPipeline {
      * Kafka uses this to release an offset only when nothing before it can still be lost.
      */
     public Outcome handle(String json, String sourceRef, Runnable whenDurable) throws IOException {
-        LocalDate day = reportDay.today();             // once per message: the row's date and its file agree
-        SftrTransactionReport report;
+        lock.lock();
         try {
-            report = transformer.transform(json, day);
-        } catch (RuntimeException e) {                 // includes reference data failures (the client already retries)
-            rejects.write(sourceRef, RejectWriter.summarize(e), day);
-            sink.whenDurable(whenDurable);
-            return Outcome.REJECTED;
+            LocalDate day = reportDay.today();         // once per message: the row's date and its file agree
+            SftrTransactionReport report;
+            try {
+                report = transformer.transform(json, day);
+            } catch (RuntimeException e) {             // includes reference data failures (the client already retries)
+                rejects.write(sourceRef, RejectWriter.summarize(e), day);
+                sink.whenDurable(whenDurable);
+                return Outcome.REJECTED;
+            }
+            sink.append(report, day, whenDurable);
+            return Outcome.WRITTEN;
+        } finally {
+            lock.unlock();
         }
-        sink.append(report, day, whenDurable);
-        return Outcome.WRITTEN;
     }
 
     /** Writes any rows still waiting in the sink (end of a file run, shutdown). */
     public void flush() throws IOException {
-        sink.flush();
+        lock.lock();
+        try {
+            sink.flush();
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** For tests that build the pipeline by hand; Spring closes the sink and the reject writer itself. */
