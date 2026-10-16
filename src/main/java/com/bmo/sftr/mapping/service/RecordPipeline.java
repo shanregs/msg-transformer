@@ -3,13 +3,21 @@ package com.bmo.sftr.mapping.service;
 import com.bmo.sftr.mapping.engine.RecordProcessor;
 import com.bmo.sftr.mapping.model.SftrConstants;
 import com.bmo.sftr.mapping.model.SftrTransactionReport;
+import com.bmo.sftr.mapping.output.OutputFileResolver;
+import com.bmo.sftr.mapping.output.OutputProperties;
+import com.bmo.sftr.mapping.output.OutputProperties.Rollover;
+import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
 import com.bmo.sftr.mapping.output.PerRecordSink;
 import com.bmo.sftr.mapping.output.RejectWriter;
+import com.bmo.sftr.mapping.output.ReportDay;
 import com.bmo.sftr.mapping.output.ReportSink;
 import com.bmo.sftr.mapping.output.SftrCsvWriter;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
 import java.io.IOException;
-import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -37,21 +45,31 @@ public class RecordPipeline {
     private final MessageTransformer transformer;
     private final ReportSink sink;
     private final RejectWriter rejects;
+    private final ReportDay reportDay;
 
     @Autowired
-    public RecordPipeline(MessageTransformer transformer, ReportSink sink, RejectWriter rejects) {
+    public RecordPipeline(MessageTransformer transformer, ReportSink sink, RejectWriter rejects, ReportDay reportDay) {
         this.transformer = transformer;
         this.sink = sink;
         this.rejects = rejects;
+        this.reportDay = reportDay;
     }
 
-    /** Builds the collaborators by hand, with the settings the Spring beans would read from configuration. */
+    /** Builds the collaborators by hand, one file with the configured name (no daily files). */
     RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
                    SftrConstants constants, ObjectMapper mapper, String outputFile, String rejectsFile,
                    String configuredFileDate) {
-        this(new MessageTransformer(refData, processor, constants, mapper, configuredFileDate),
-                new PerRecordSink(csvWriter, processor, Path.of(outputFile)),
-                new RejectWriter(outputFile, rejectsFile));
+        this(refData, processor, csvWriter, constants, mapper, new OutputProperties(outputFile, rejectsFile,
+                configuredFileDate, Rollover.NONE, ZoneId.of("Asia/Kolkata"), WriteMode.PER_RECORD, 10,
+                Duration.ofMinutes(5), 1000), Clock.system(ZoneId.of("Asia/Kolkata")));
+    }
+
+    /** Builds the collaborators by hand from the given settings and clock. */
+    RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
+                   SftrConstants constants, ObjectMapper mapper, OutputProperties props, Clock clock) {
+        this(new MessageTransformer(refData, processor, constants, mapper),
+                new PerRecordSink(csvWriter, processor, new OutputFileResolver(props)),
+                new RejectWriter(new OutputFileResolver(props)), new ReportDay(props, clock));
     }
 
     /**
@@ -59,14 +77,15 @@ public class RecordPipeline {
      * @param sourceRef where it came from (for example topic-partition@offset); goes to the rejects file
      */
     public Outcome handle(String json, String sourceRef) throws IOException {
+        LocalDate day = reportDay.today();             // once per message: the row's date and its file agree
         SftrTransactionReport report;
         try {
-            report = transformer.transform(json);
+            report = transformer.transform(json, day);
         } catch (RuntimeException e) {                 // includes reference data failures (the client already retries)
-            rejects.write(sourceRef, RejectWriter.summarize(e));
+            rejects.write(sourceRef, RejectWriter.summarize(e), day);
             return Outcome.REJECTED;
         }
-        sink.append(report);
+        sink.append(report, day);
         return Outcome.WRITTEN;
     }
 

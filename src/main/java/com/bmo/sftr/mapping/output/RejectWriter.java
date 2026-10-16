@@ -8,36 +8,39 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import tools.jackson.core.JacksonException;
 
-/** Appends one line per rejected message: source reference, a tab, and a short reason. Flushed at once. */
+/**
+ * Appends one line per rejected message: source reference, a tab, and a short reason. Flushed at once.
+ * When daily files are on, the first reject of a new day closes the previous day's file and starts a new one.
+ */
 @Component
 public class RejectWriter {
 
     private static final Logger log = LoggerFactory.getLogger(RejectWriter.class);
 
-    private final Path rejectsFile;
+    private final OutputFileResolver files;
+    private Path openFile;
     private BufferedWriter rejects;
 
-    public RejectWriter(@Value("${sftr.output.file}") String outputFile,
-                        @Value("${sftr.output.rejects-file:}") String rejectsFile) {
-        Path out = Path.of(outputFile);
-        this.rejectsFile = (rejectsFile == null || rejectsFile.isBlank())
-                ? out.resolveSibling(out.getFileName() + ".rejects")
-                : Path.of(rejectsFile);
+    public RejectWriter(OutputFileResolver files) {
+        this.files = files;
     }
 
-    public void write(String sourceRef, String summary) throws IOException {
-        if (rejects == null) {
-            Path parent = rejectsFile.toAbsolutePath().getParent();
+    public void write(String sourceRef, String summary, LocalDate day) throws IOException {
+        Path file = files.rejects(day);
+        if (rejects == null || !file.equals(openFile)) {
+            close();
+            Path parent = file.toAbsolutePath().getParent();
             if (parent != null) Files.createDirectories(parent);
-            rejects = Files.newBufferedWriter(rejectsFile, StandardCharsets.UTF_8,
+            rejects = Files.newBufferedWriter(file, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            openFile = file;
         }
         rejects.write(sourceRef + "\t" + summary + "\n");
         rejects.flush();
@@ -63,6 +66,7 @@ public class RejectWriter {
         if (rejects != null) {
             rejects.close();
             rejects = null;
+            openFile = null;
         }
     }
 }

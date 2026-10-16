@@ -28,6 +28,8 @@ class OutputPropertiesTest {
         assertThat(p.batchSize()).isEqualTo(10);
         assertThat(p.batchInterval()).isEqualTo(Duration.ofMinutes(5));
         assertThat(p.maxBufferedRecords()).isEqualTo(1000);
+        assertThat(p.rollover()).isEqualTo(OutputProperties.Rollover.DAILY);
+        assertThat(p.fileZone()).isEqualTo(java.time.ZoneId.of("Asia/Kolkata"));
     }
 
     @Test
@@ -52,8 +54,20 @@ class OutputPropertiesTest {
     }
 
     @Test
+    void rolloverAndZoneBind() {
+        OutputProperties p = bind("sftr.output.rollover", "NONE", "sftr.output.file-zone", "UTC");
+        assertThat(p.rollover()).isEqualTo(OutputProperties.Rollover.NONE);
+        assertThat(p.fileZone()).isEqualTo(java.time.ZoneId.of("UTC"));
+    }
+
+    @Test
+    void anUnknownZoneFailsTheBinding() {
+        assertThatThrownBy(() -> bind("sftr.output.file-zone", "Mars/Olympus")).isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
     void fileIsRequired() {
-        assertThatThrownBy(() -> new OutputProperties(" ", null, null, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000))
+        assertThatThrownBy(() -> new OutputProperties(" ", null, null, null, null, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("sftr.output.file is required");
     }

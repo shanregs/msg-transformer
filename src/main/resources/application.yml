@@ -29,12 +29,14 @@ sftr:
 
   output:
     file: ./data/sftr-report.csv      # rows are appended, in arrival order
-    rejects-file:                     # default: <file>.rejects
+    rollover: DAILY                   # DAILY: a new file each day (sftr-report-2026-10-16.csv, same for rejects); NONE: one file
+    file-zone: Asia/Kolkata           # the time zone whose midnight starts a new day
+    rejects-file:                     # default: <report file>.rejects
     write-mode: PER_RECORD            # PER_RECORD: open, append, close per message (INTERVAL and COUNT come in the next step)
     batch-size: 10                    # COUNT: write when this many rows are waiting
     batch-interval: 5m                # INTERVAL: write when the oldest waiting row is this old
     max-buffered-records: 1000        # safety cap on rows held in memory
-    file-date:                        # optional ISO date; default is today
+    file-date:                        # optional ISO date; replaces today in the rows and the file names
 
   csv:
     delimiter: ","

@@ -92,6 +92,18 @@ What this changes in the design:
 
 Alternative not tested: Spring Kafka (already in the project) queues `Acknowledgment.acknowledge()` calls made from another thread and commits them on its own consumer thread, which would avoid the limitation. If a tight commit after the timer flush matters, that is a reason to keep `KafkaRecordListener` for ingestion and use Camel only elsewhere. Say if you want that checked before step 1.
 
+## 6b. Daily files (step 3b)
+
+A new report file and a new rejects file start each day. Decided with the requester: the day changes at midnight in **Asia/Kolkata**, and the rejects file also rolls over.
+
+- `sftr.output.rollover: DAILY | NONE` (default `DAILY`) and `sftr.output.file-zone` (default `Asia/Kolkata`).
+- `OutputFileResolver` adds the date before the extension: `sftr-report.csv` becomes `sftr-report-2026-10-16.csv`, and the default rejects file is `sftr-report-2026-10-16.csv.rejects`. A configured rejects file also gets the date (`rejects-2026-10-16.txt`).
+- `ReportDay.today()` reads the clock **once per message** in `RecordPipeline.handle()`. That one date goes into the row (`fileDate`), to the sink and to the reject writer, so a row and its file cannot disagree at midnight.
+- There is no helper thread: a day's file is created when its first row arrives (`openAppend` writes the header for a new or empty file), so quiet days leave no empty files. A restart mid-day appends to that day's file.
+- `ReportSink.append(report, day)` takes the date. `PerRecordSink` opens the file for that day. `RejectWriter` closes the previous day's file and opens the new one on the first reject of a day.
+- A fixed `sftr.output.file-date` replaces today's date in the rows **and** in the file names (useful for replays and tests).
+- **For the batching sink (step 4):** a row belongs to the day it arrived, not the day the batch is written. When a row for a new day arrives while older-dated rows are buffered, the sink flushes the old batch first, so a batch never mixes two days. The flusher's deadline is the earlier of the batch interval and the next midnight in `file-zone`, so rows from 23:58 do not wait past midnight.
+
 ## 7. Shutdown, errors, rejects
 
 - **Shutdown order:** stop the Camel route (no new messages), flush the buffer, commit the offsets, close the files. Implemented as a `SmartLifecycle` bean ordered after the route. `FileInputRunner` flushes at end of file.
@@ -125,7 +137,8 @@ Each step is a separate commit, and the existing tests stay green after every on
 1. **Refactor, no behaviour change.** Extract `MessageTransformer` and `RejectWriter` from `RecordPipeline`. Introduce `ReportSink` with a first implementation that matches today's behaviour. `RecordPipelineTest`, `GoldenFileTest`, `FileInputRunnerTest` and `KafkaRecordListenerTest` must pass unchanged.
 2. **`OutputProperties`.** Typed config with validation and tests for every mode and bad combination.
 3. **`PerRecordSink`.** Open, write, close per message. Test that the header is written once and rows survive reopen.
-4. **`BatchingSink`.** Count trigger, then interval trigger. Inject a `Clock` and a scheduler so tests run without real waiting. Test: order preserved, flush on shutdown, retry after a write failure, cap behaviour.
+3b. **Daily files. Done**, see section 6b.
+4. **`BatchingSink`.** Day-aware: flush on a day change and at midnight (section 6b). Count trigger, then interval trigger. Inject a `Clock` and a scheduler so tests run without real waiting. Test: order preserved, flush on shutdown, retry after a write failure, cap behaviour.
 5. **`KafkaIngestRoute` and `OffsetCommitter`.** Camel route with one consumer and manual commit. `OffsetCommitter` keeps committable offsets from the flusher thread and commits them on the consumer thread (immediately after a count flush, on the next message after a timer flush). Tests with the Camel test support and a mock endpoint. One integration test with an embedded or containerised Kafka for the commit-after-flush rule.
 6. **Wire `sftr.ingest`.** Switch between the new route and the old listener so the change can be rolled back by config.
 7. **Golden test across modes.** The same input must give the same CSV rows in `PER_RECORD`, `COUNT` and `INTERVAL`.

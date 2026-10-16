@@ -46,6 +46,6 @@ class GoldenFileTest {
         pipeline.handle(line, "trade-messages-0@0");
 
         byte[] expected = new ClassPathResource("golden/expected.csv").getContentAsByteArray();
-        assertThat(Files.readAllBytes(outDir.resolve("out.csv"))).isEqualTo(expected);
+        assertThat(Files.readAllBytes(outDir.resolve("out-2026-01-01.csv"))).isEqualTo(expected);
     }
 }

@@ -55,6 +55,7 @@ flowchart TB
         rej["RejectWriter (new, extracted)<br/>appends to the rejects file"]
         csv["SftrCsvWriter<br/>openAppend, write rows"]
         commit["OffsetCommitter (new)<br/>committable offsets per partition<br/>commits on the consumer thread"]
+        files["OutputFileResolver + ReportDay (new)<br/>one clock reading per message<br/>daily file names, midnight in Asia/Kolkata"]
         props["OutputProperties (new)<br/>write-mode, batch-size,<br/>batch-interval, validated at startup"]
 
         route -->|message| tf
@@ -74,6 +75,9 @@ flowchart TB
         per -->|row written, release offset| commit
         commit -->|commit on the consumer thread| route
         props -.->|selects sink and limits| sink
+        files -.->|file for the day| per
+        files -.->|file for the day| batch
+        files -.->|file for the day| rej
     end
 
     style sink fill:#dbeafe,stroke:#2563eb,stroke-width:2px
