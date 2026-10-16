@@ -156,6 +156,8 @@ Added on `camel-batch-writer` (commits in order: refactor, `OutputProperties`, `
 | `ReportSink` | `append(report, day, whenDurable)` and `whenDurable(action)`. `PerRecordSink` runs callbacks right after the write. `BatchingSink` runs them, in order, after the batch is written. |
 | `OffsetCommitter` | Any thread may release an offset; only the consumer thread commits. Keeps the highest offset per partition. |
 | `FileInputRunner` | Calls `pipeline.flush()` at the end of the file, so batch modes write the last rows. |
+| `TestMessageController` | `POST /api/test-message` with the `rest` profile: one message through the whole flow into the CSV, flushed by default. `RecordPipeline` now serialises calls with a lock because a second thread can call it. |
+| `camel.main.run-controller` | Follows `sftr.kafka.enabled`. Without it the app exited right after startup, because Camel's Kafka consumer threads are daemon threads. Found by a smoke run of the packaged jar. |
 
 Verified against a real Kafka (Docker, `apache/kafka`), see the two tests in `src/test/java/.../camel` (run with `-Dkafka.it=true` and a broker on `localhost:19092`):
 
