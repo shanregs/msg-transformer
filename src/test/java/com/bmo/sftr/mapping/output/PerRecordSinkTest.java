@@ -1,7 +1,6 @@
 package com.bmo.sftr.mapping.output;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -125,15 +124,7 @@ class PerRecordSinkTest {
     @Test
     void perRecordModeSelectsThisSink() {
         OutputProperties props = props(dir.resolve("o.csv"), Rollover.DAILY, WriteMode.PER_RECORD);
-        assertThat(new ReportSinkConfig().reportSink(props, new SftrCsvWriter(','), processor, new OutputFileResolver(props)))
+        assertThat(new ReportSinkConfig().reportSink(props, new SftrCsvWriter(','), processor, new OutputFileResolver(props), java.time.Clock.systemUTC()))
                 .isInstanceOf(PerRecordSink.class);
-    }
-
-    @Test
-    void batchModesAreNotAvailableYet() {
-        OutputProperties count = props(dir.resolve("o.csv"), Rollover.DAILY, WriteMode.COUNT);
-        assertThatThrownBy(() -> new ReportSinkConfig().reportSink(count, new SftrCsvWriter(','), processor,
-                new OutputFileResolver(count)))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("COUNT");
     }
 }

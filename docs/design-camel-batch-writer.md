@@ -138,7 +138,7 @@ Each step is a separate commit, and the existing tests stay green after every on
 2. **`OutputProperties`.** Typed config with validation and tests for every mode and bad combination.
 3. **`PerRecordSink`.** Open, write, close per message. Test that the header is written once and rows survive reopen.
 3b. **Daily files. Done**, see section 6b.
-4. **`BatchingSink`.** Day-aware: flush on a day change and at midnight (section 6b). Count trigger, then interval trigger. Inject a `Clock` and a scheduler so tests run without real waiting. Test: order preserved, flush on shutdown, retry after a write failure, cap behaviour.
+4. **`BatchingSink`. Done.** Day-aware: flush on a day change and at midnight (section 6b). Count and timer triggers, flusher virtual thread, failed writes keep the rows and retry after 5 seconds, full buffer refuses the new row. Count trigger, then interval trigger. Inject a `Clock` and a scheduler so tests run without real waiting. Test: order preserved, flush on shutdown, retry after a write failure, cap behaviour.
 5. **`KafkaIngestRoute` and `OffsetCommitter`.** Camel route with one consumer and manual commit. `OffsetCommitter` keeps committable offsets from the flusher thread and commits them on the consumer thread (immediately after a count flush, on the next message after a timer flush). Tests with the Camel test support and a mock endpoint. One integration test with an embedded or containerised Kafka for the commit-after-flush rule.
 6. **Wire `sftr.ingest`.** Switch between the new route and the old listener so the change can be rolled back by config.
 7. **Golden test across modes.** The same input must give the same CSV rows in `PER_RECORD`, `COUNT` and `INTERVAL`.

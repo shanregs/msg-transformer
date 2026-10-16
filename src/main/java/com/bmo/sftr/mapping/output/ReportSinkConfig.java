@@ -18,11 +18,10 @@ public class ReportSinkConfig {
 
     @Bean
     public ReportSink reportSink(OutputProperties props, SftrCsvWriter csvWriter, RecordProcessor processor,
-                                 OutputFileResolver files) {
+                                 OutputFileResolver files, Clock clock) {
         return switch (props.writeMode()) {
             case PER_RECORD -> new PerRecordSink(csvWriter, processor, files);
-            case COUNT, INTERVAL -> throw new IllegalStateException(
-                    "sftr.output.write-mode " + props.writeMode() + " is not available yet");
+            case COUNT, INTERVAL -> new BatchingSink(csvWriter, processor, files, props, clock);
         };
     }
 }
