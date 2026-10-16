@@ -235,6 +235,50 @@ class BatchingSinkTest {
     }
 
     @Test
+    void callbacksRunInOrderOnlyAfterTheirRowsAreWritten() throws Exception {
+        BatchingSink s = sink(WriteMode.COUNT, 2, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        List<String> done = new java.util.ArrayList<>();
+        s.append(row("GIVE"), DAY1, () -> done.add("first"));
+        s.whenDurable(() -> done.add("reject-after-first"));
+        assertThat(done).isEmpty();                                  // nothing is on disk yet
+
+        s.append(row("TAKE"), DAY1, () -> done.add("second"));       // batch of 2 is written
+        assertThat(day(DAY1)).exists();
+        assertThat(done).containsExactly("first", "reject-after-first", "second");
+    }
+
+    @Test
+    void whenDurableRunsAtOnceWhenNothingIsWaiting() {
+        BatchingSink s = sink(WriteMode.COUNT, 5, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        List<String> done = new java.util.ArrayList<>();
+        s.whenDurable(() -> done.add("now"));
+        assertThat(done).containsExactly("now");
+    }
+
+    @Test
+    void callbacksWaitForTheRetryWhenTheWriteFails() throws Exception {
+        BatchingSink s = sink(WriteMode.INTERVAL, 10, Duration.ofMinutes(5), 1000, new FlakyWriter(1));
+        List<String> done = new java.util.ArrayList<>();
+        s.append(row("GIVE"), DAY1, () -> done.add("row"));
+        clock.advance(Duration.ofMinutes(5));
+        s.flushIfDue();
+        assertThat(done).isEmpty();                                  // failed write: offset must not be released
+        clock.advance(BatchingSink.RETRY_DELAY);
+        s.flushIfDue();
+        assertThat(done).containsExactly("row");
+    }
+
+    @Test
+    void aFailingCallbackDoesNotStopTheOthers() throws Exception {
+        BatchingSink s = sink(WriteMode.COUNT, 2, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        List<String> done = new java.util.ArrayList<>();
+        s.append(row("GIVE"), DAY1, () -> { throw new IllegalStateException("boom"); });
+        s.append(row("TAKE"), DAY1, () -> done.add("second"));
+        assertThat(done).containsExactly("second");
+        assertThat(sides(day(DAY1))).containsExactly("GIVE", "TAKE");
+    }
+
+    @Test
     void perRecordModeIsNotABatchMode() {
         OutputProperties props = new OutputProperties("x.csv", null, null, Rollover.DAILY, KOLKATA,
                 WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000);

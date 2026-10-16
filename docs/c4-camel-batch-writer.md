@@ -210,6 +210,26 @@ sequenceDiagram
     R->>C: commit offset 7 on the consumer thread
 ```
 
+## Dynamic view 3: the durable callback
+
+`RecordPipeline` gives each message a callback. The sink runs it only after the row is in the CSV (or, for a reject, after every earlier row is). The callback does not commit; it releases the offset to `OffsetCommitter`, and the consumer thread commits it.
+
+```mermaid
+sequenceDiagram
+    participant R as KafkaIngestRoute (consumer thread)
+    participant P as RecordPipeline
+    participant S as ReportSink
+    participant C as OffsetCommitter
+    participant K as Kafka
+
+    R->>P: handle(json, ref, whenDurable)
+    P->>S: append(row, day, whenDurable)
+    Note over S: PerRecordSink writes now, BatchingSink keeps the row and the callback
+    S-->>C: whenDurable: release(offset) once the row is in the CSV
+    R->>C: commitReleased()
+    C->>K: commit highest released offset per partition
+```
+
 ## Decision view: when does a write happen?
 
 ```mermaid

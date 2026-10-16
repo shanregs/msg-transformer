@@ -77,16 +77,31 @@ public class RecordPipeline {
      * @param sourceRef where it came from (for example topic-partition@offset); goes to the rejects file
      */
     public Outcome handle(String json, String sourceRef) throws IOException {
+        return handle(json, sourceRef, () -> { });
+    }
+
+    /**
+     * As {@link #handle(String, String)}, and runs {@code whenDurable} once the outcome is safely on disk:
+     * the row is in the CSV, or the reject line is written and every earlier row is in the CSV too.
+     * Kafka uses this to release an offset only when nothing before it can still be lost.
+     */
+    public Outcome handle(String json, String sourceRef, Runnable whenDurable) throws IOException {
         LocalDate day = reportDay.today();             // once per message: the row's date and its file agree
         SftrTransactionReport report;
         try {
             report = transformer.transform(json, day);
         } catch (RuntimeException e) {                 // includes reference data failures (the client already retries)
             rejects.write(sourceRef, RejectWriter.summarize(e), day);
+            sink.whenDurable(whenDurable);
             return Outcome.REJECTED;
         }
-        sink.append(report, day);
+        sink.append(report, day, whenDurable);
         return Outcome.WRITTEN;
+    }
+
+    /** Writes any rows still waiting in the sink (end of a file run, shutdown). */
+    public void flush() throws IOException {
+        sink.flush();
     }
 
     /** For tests that build the pipeline by hand; Spring closes the sink and the reject writer itself. */

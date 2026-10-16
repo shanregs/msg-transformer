@@ -23,6 +23,8 @@ sftr:
   mapping:
     config: classpath:sftr-field-mappings.json
 
+  ingest: camel                       # camel (Camel Kafka route, needed for batch write modes) | spring-kafka (previous listener, PER_RECORD only)
+
   kafka:
     enabled: true
     topic: trade-messages             # use ONE partition if global order matters
@@ -32,7 +34,7 @@ sftr:
     rollover: DAILY                   # DAILY: a new file each day (sftr-report-2026-10-16.csv, same for rejects); NONE: one file
     file-zone: Asia/Kolkata           # the time zone whose midnight starts a new day
     rejects-file:                     # default: <report file>.rejects
-    write-mode: PER_RECORD            # PER_RECORD: open, append, close per message (INTERVAL and COUNT come in the next step)
+    write-mode: PER_RECORD            # PER_RECORD: open, append, close per message | COUNT: batch of batch-size rows | INTERVAL: batch every batch-interval
     batch-size: 10                    # COUNT: write when this many rows are waiting
     batch-interval: 5m                # INTERVAL: write when the oldest waiting row is this old
     max-buffered-records: 1000        # safety cap on rows held in memory

@@ -124,4 +124,14 @@ class RecordPipelineTest {
         assertThat(lines.stream().filter(l -> l.startsWith("IM_SubmitterID,")).count()).isEqualTo(1);
         assertThat(sides()).containsExactly("GIVE", "TAKE");
     }
+
+    @Test
+    void callbackRunsForWrittenAndRejectedMessagesOnceTheyAreDurable() throws Exception {
+        RecordPipeline p = pipeline();
+        List<String> done = new java.util.ArrayList<>();
+        p.handle(msg("1", "PO"), "t-0@0", () -> done.add("written"));
+        p.handle("{not json", "t-0@1", () -> done.add("rejected"));
+        assertThat(done).containsExactly("written", "rejected");
+        assertThat(sides()).containsExactly("GIVE");
+    }
 }

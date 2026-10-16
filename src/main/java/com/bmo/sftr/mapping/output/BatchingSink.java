@@ -55,6 +55,7 @@ public class BatchingSink implements ReportSink {
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition wake = lock.newCondition();
     private final List<SftrTransactionReport> buffer = new ArrayList<>();
+    private final List<Runnable> pending = new ArrayList<>();       // run, in order, once the buffer is written
     private LocalDate bufferDay;        // the day of every buffered row
     private Instant firstAt;            // when the oldest buffered row arrived
     private Instant retryAt;            // set after a failed write
@@ -84,12 +85,13 @@ public class BatchingSink implements ReportSink {
     }
 
     @Override
-    public void append(SftrTransactionReport report, LocalDate day) throws IOException {
+    public void append(SftrTransactionReport report, LocalDate day, Runnable whenDurable) throws IOException {
+        List<Runnable> released = new ArrayList<>();
         lock.lock();
         try {
             if (closed) throw new IllegalStateException("Sink is closed");
-            if (!buffer.isEmpty() && !day.equals(bufferDay)) flushLocked();     // a batch never mixes days
-            if (buffer.size() >= maxBuffered) flushLocked();                    // full: make room or refuse
+            if (!buffer.isEmpty() && !day.equals(bufferDay)) flushLocked(released);   // a batch never mixes days
+            if (buffer.size() >= maxBuffered) flushLocked(released);                  // full: make room or refuse
             if (buffer.isEmpty()) {
                 bufferDay = day;
                 firstAt = clock.instant();
@@ -97,34 +99,54 @@ public class BatchingSink implements ReportSink {
                 wake.signalAll();
             }
             buffer.add(report);
-            if (mode == WriteMode.COUNT && buffer.size() >= batchSize) flushLocked();
+            pending.add(whenDurable);
+            if (mode == WriteMode.COUNT && buffer.size() >= batchSize) flushLocked(released);
         } finally {
             lock.unlock();
+            run(released);                          // callbacks run without the lock
         }
     }
 
     @Override
-    public void flush() throws IOException {
+    public void whenDurable(Runnable action) {
         lock.lock();
         try {
-            flushLocked();
+            if (!buffer.isEmpty()) {
+                pending.add(action);
+                return;
+            }
         } finally {
             lock.unlock();
+        }
+        run(List.of(action));
+    }
+
+    @Override
+    public void flush() throws IOException {
+        List<Runnable> released = new ArrayList<>();
+        lock.lock();
+        try {
+            flushLocked(released);
+        } finally {
+            lock.unlock();
+            run(released);
         }
     }
 
     /** Writes the batch if its deadline has passed. Returns true if rows were written. Called by the flusher. */
     boolean flushIfDue() {
+        List<Runnable> released = new ArrayList<>();
         lock.lock();
         try {
             if (buffer.isEmpty() || clock.instant().isBefore(deadlineLocked())) return false;
-            flushLocked();
+            flushLocked(released);
             return true;
         } catch (IOException | RuntimeException e) {
             log.error("Could not write {} buffered rows to {}; will retry", buffer.size(), files.report(bufferDay), e);
             return false;
         } finally {
             lock.unlock();
+            run(released);
         }
     }
 
@@ -159,8 +181,11 @@ public class BatchingSink implements ReportSink {
         flush();
     }
 
-    /** Must hold the lock. Writes the whole buffer to its day's file; on failure the rows stay. */
-    private void flushLocked() throws IOException {
+    /**
+     * Must hold the lock. Writes the whole buffer to its day's file; on failure the rows stay. On success the
+     * callbacks of the written rows are added to {@code released}; the caller runs them after unlocking.
+     */
+    private void flushLocked(List<Runnable> released) throws IOException {
         if (buffer.isEmpty()) return;
         try (SftrCsvWriter.Session csv = csvWriter.openAppend(files.report(bufferDay), processor.columnDefs())) {
             for (SftrTransactionReport row : buffer) csv.write(row);
@@ -169,6 +194,8 @@ public class BatchingSink implements ReportSink {
             throw e;
         }
         log.debug("Wrote {} rows to {}", buffer.size(), files.report(bufferDay));
+        released.addAll(pending);
+        pending.clear();
         buffer.clear();
         bufferDay = null;
         firstAt = null;
@@ -185,6 +212,16 @@ public class BatchingSink implements ReportSink {
 
     private static Instant min(Instant a, Instant b) {
         return a.isBefore(b) ? a : b;
+    }
+
+    private static void run(List<Runnable> actions) {
+        for (Runnable r : actions) {
+            try {
+                r.run();
+            } catch (RuntimeException e) {
+                log.error("Callback after writing rows failed", e);
+            }
+        }
     }
 
     private void startFlusherLocked() {
@@ -204,11 +241,18 @@ public class BatchingSink implements ReportSink {
                     }
                     Duration wait = Duration.between(clock.instant(), deadlineLocked());
                     if (wait.isZero() || wait.isNegative()) {
+                        List<Runnable> released = new ArrayList<>();
                         try {
-                            flushLocked();
+                            flushLocked(released);
                         } catch (IOException | RuntimeException e) {
                             log.error("Could not write {} buffered rows to {}; will retry", buffer.size(),
                                     files.report(bufferDay), e);
+                        }
+                        lock.unlock();                  // callbacks run without the lock
+                        try {
+                            run(released);
+                        } finally {
+                            lock.lock();
                         }
                         continue;
                     }

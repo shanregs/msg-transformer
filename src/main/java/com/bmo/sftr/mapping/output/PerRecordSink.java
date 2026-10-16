@@ -24,10 +24,16 @@ public class PerRecordSink implements ReportSink {
     }
 
     @Override
-    public void append(SftrTransactionReport report, LocalDate day) throws IOException {
+    public void append(SftrTransactionReport report, LocalDate day, Runnable whenDurable) throws IOException {
         try (SftrCsvWriter.Session csv = csvWriter.openAppend(files.report(day), processor.columnDefs())) {
             csv.write(report);
         }
+        whenDurable.run();
+    }
+
+    @Override
+    public void whenDurable(Runnable action) {
+        action.run();                       // nothing is ever waiting
     }
 
     @Override

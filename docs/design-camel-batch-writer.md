@@ -1,6 +1,6 @@
 # Design: Camel Kafka route and configurable CSV write modes
 
-Branch: `camel-batch-writer` (created from `file-input`). Status: proposal, step 0 spike done (section 6a), no production code yet. Decisions confirmed: duplicates after a crash are acceptable, exactly three write modes, newest Camel that supports Spring Boot 4.1 and Java 25, `FileInputRunner` stays as it is.
+Branch: `camel-batch-writer` (created from `file-input`). Status: implemented on this branch (steps 0 to 7; step 8 is this documentation). Section 11 lists what was built. Decisions confirmed: duplicates after a crash are acceptable, exactly three write modes, newest Camel that supports Spring Boot 4.1 and Java 25, `FileInputRunner` stays as it is.
 Diagrams: [c4-camel-batch-writer.md](c4-camel-batch-writer.md). Current design: [code-flow-and-classes.md](code-flow-and-classes.md).
 
 ## 1. What is being asked
@@ -139,10 +139,30 @@ Each step is a separate commit, and the existing tests stay green after every on
 3. **`PerRecordSink`.** Open, write, close per message. Test that the header is written once and rows survive reopen.
 3b. **Daily files. Done**, see section 6b.
 4. **`BatchingSink`. Done.** Day-aware: flush on a day change and at midnight (section 6b). Count and timer triggers, flusher virtual thread, failed writes keep the rows and retry after 5 seconds, full buffer refuses the new row. Count trigger, then interval trigger. Inject a `Clock` and a scheduler so tests run without real waiting. Test: order preserved, flush on shutdown, retry after a write failure, cap behaviour.
-5. **`KafkaIngestRoute` and `OffsetCommitter`.** Camel route with one consumer and manual commit. `OffsetCommitter` keeps committable offsets from the flusher thread and commits them on the consumer thread (immediately after a count flush, on the next message after a timer flush). Tests with the Camel test support and a mock endpoint. One integration test with an embedded or containerised Kafka for the commit-after-flush rule.
-6. **Wire `sftr.ingest`.** Switch between the new route and the old listener so the change can be rolled back by config.
-7. **Golden test across modes.** The same input must give the same CSV rows in `PER_RECORD`, `COUNT` and `INTERVAL`.
+5. **`KafkaIngestRoute` and `OffsetCommitter`. Done.** Camel route with one consumer and manual commit. `OffsetCommitter` keeps committable offsets from the flusher thread and commits them on the consumer thread (immediately after a count flush, on the next message after a timer flush). Tests with the Camel test support and a mock endpoint. One integration test with an embedded or containerised Kafka for the commit-after-flush rule.
+6. **Wire `sftr.ingest`. Done.** Switch between the new route and the old listener so the change can be rolled back by config.
+7. **Golden test across modes. Done** (`WriteModesGoldenTest`). The same input must give the same CSV rows in `PER_RECORD`, `COUNT` and `INTERVAL`.
 8. **Docs.** Update `code-flow-and-classes.md` and the C4 file on this branch, and remove the old listener once the route is proven.
+
+## 11. What was built
+
+Added on `camel-batch-writer` (commits in order: refactor, `OutputProperties`, `PerRecordSink`, daily files, `BatchingSink`, Camel route).
+
+| Piece | Behaviour |
+| --- | --- |
+| `sftr.ingest` | `camel` (default) uses `KafkaIngestRoute`. `spring-kafka` keeps the previous `KafkaRecordListener`, and refuses to start with a batch write mode because it acknowledges before the batch is written. `sftr.kafka.enabled=false` turns both off (the `file` profile). |
+| `KafkaIngestRoute` | One Camel Kafka consumer (`consumersCount=1`, `maxPollRecords=1`, manual commit, no auto commit). Runs `RecordPipeline` on the consumer thread, then commits whatever `OffsetCommitter` holds. Stops its route before the sink is closed. |
+| `RecordPipeline.handle(json, ref, whenDurable)` | The callback runs when the message's outcome is on disk: its row is in the CSV, or its reject line is written and every earlier row is in the CSV. |
+| `ReportSink` | `append(report, day, whenDurable)` and `whenDurable(action)`. `PerRecordSink` runs callbacks right after the write. `BatchingSink` runs them, in order, after the batch is written. |
+| `OffsetCommitter` | Any thread may release an offset; only the consumer thread commits. Keeps the highest offset per partition. |
+| `FileInputRunner` | Calls `pipeline.flush()` at the end of the file, so batch modes write the last rows. |
+
+Verified against a real Kafka (Docker, `apache/kafka`), see the two tests in `src/test/java/.../camel` (run with `-Dkafka.it=true` and a broker on `localhost:19092`):
+
+- `COUNT` of 3: after 2 messages the CSV does not exist and no offset is committed; after the third, the CSV has 3 rows and offset 3 is committed.
+- `INTERVAL` of 3 seconds: the timer writes the CSV without any new message, and the offsets are committed only when the next message arrives.
+
+The normal `mvn test` skips those two and needs no broker.
 
 ## 10. Decisions and remaining checks
 

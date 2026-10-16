@@ -61,6 +61,7 @@ public class FileInputRunner implements ApplicationRunner {
         } else {
             readLines(counts);
         }
+        pipeline.flush();                                           // batch write modes: write what is still waiting
         log.info("Finished {}: {} written, {} rejected or failed", input, counts[0], counts[1]);
     }
 

@@ -122,6 +122,24 @@ class PerRecordSinkTest {
     }
 
     @Test
+    void callbackRunsAfterTheRowIsWritten() throws Exception {
+        Path out = dir.resolve("out.csv");
+        PerRecordSink sink = sink(new SftrCsvWriter(','), out, Rollover.NONE);
+        List<Integer> linesWhenCalled = new java.util.ArrayList<>();
+        sink.append(row("GIVE"), DAY, () -> {
+            try {
+                linesWhenCalled.add(Files.readAllLines(out).size());
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        assertThat(linesWhenCalled).containsExactly(2);          // header + the row, already on disk
+        List<String> later = new java.util.ArrayList<>();
+        sink.whenDurable(() -> later.add("ran"));
+        assertThat(later).containsExactly("ran");
+    }
+
+    @Test
     void perRecordModeSelectsThisSink() {
         OutputProperties props = props(dir.resolve("o.csv"), Rollover.DAILY, WriteMode.PER_RECORD);
         assertThat(new ReportSinkConfig().reportSink(props, new SftrCsvWriter(','), processor, new OutputFileResolver(props), java.time.Clock.systemUTC()))
