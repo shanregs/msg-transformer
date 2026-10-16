@@ -4,7 +4,9 @@ import com.bmo.sftr.mapping.service.RecordPipeline;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import com.bmo.sftr.mapping.output.OutputProperties;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
@@ -20,14 +22,27 @@ import org.springframework.stereotype.Component;
  * order holds per partition.
  */
 @Component
-@ConditionalOnProperty(name = "sftr.kafka.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnExpression("'${sftr.ingest:camel}' == 'spring-kafka' and '${sftr.kafka.enabled:true}' == 'true'")
 public class KafkaRecordListener {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaRecordListener.class);
 
     private final RecordPipeline pipeline;
 
-    public KafkaRecordListener(RecordPipeline pipeline) {
+    /**
+     * This listener acknowledges right after handling, so it is only safe when each row is written at once.
+     * The batch write modes need the Camel route, which releases offsets after the write.
+     */
+    @Autowired
+    public KafkaRecordListener(RecordPipeline pipeline, OutputProperties output) {
+        this(pipeline);
+        if (output.writeMode() != OutputProperties.WriteMode.PER_RECORD) {
+            throw new IllegalStateException("sftr.output.write-mode " + output.writeMode()
+                    + " needs sftr.ingest=camel: the spring-kafka listener acknowledges before the batch is written");
+        }
+    }
+
+    KafkaRecordListener(RecordPipeline pipeline) {
         this.pipeline = pipeline;
     }
 

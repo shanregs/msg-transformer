@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.bmo.sftr.mapping.TestSupport;
-import com.bmo.sftr.mapping.kafka.KafkaRecordListener;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +18,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /** Full application context (Kafka consumer not started) and a byte-for-byte comparison of the output. */
-@SpringBootTest(properties = {"spring.kafka.listener.auto-startup=false", "sftr.output.file-date=2026-01-01"})
+@SpringBootTest(properties = {"sftr.kafka.enabled=false", "sftr.output.file-date=2026-01-01"})
 class GoldenFileTest {
 
     private static Path outDir;
@@ -34,7 +33,6 @@ class GoldenFileTest {
     RefDataClient refDataClient;
 
     @Autowired RecordPipeline pipeline;
-    @Autowired KafkaRecordListener listener;
 
     @Test
     void pipelineMatchesGoldenFile() throws Exception {
@@ -46,6 +44,6 @@ class GoldenFileTest {
         pipeline.handle(line, "trade-messages-0@0");
 
         byte[] expected = new ClassPathResource("golden/expected.csv").getContentAsByteArray();
-        assertThat(Files.readAllBytes(outDir.resolve("out.csv"))).isEqualTo(expected);
+        assertThat(Files.readAllBytes(outDir.resolve("out-2026-01-01.csv"))).isEqualTo(expected);
     }
 }
