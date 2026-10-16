@@ -1,0 +1,219 @@
+# Requests for the test endpoint. Start the app with the rest or both profile and the stub
+# (python samples/refdata-stub.py). See docs/running-locally.md. Run a request with the green arrow in the gutter.
+# Change @host if the app is not on port 8080.
+@host = http://localhost:8080
+
+### A1 London entity, trade PO
+# Expect one CSV row: CP_RepCp 549300CP1 plus zeros, CP_NatureOfRepCp C, CP_SecOfRepCp CDTI, CP_BranchOfRepCp GB (the LDNBB prefix is a London entity), CP_CpSide GIVE (PO is a GIVE code).
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A1",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP1",
+  "group_cd": "G1"
+}
+
+### A2 non-London entity, trade PI
+# Expect CP_BranchOfRepCp empty (BMOCM01 is not a London prefix) and CP_CpSide TAKE (PI is a TAKE code).
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A2",
+  "trade_type": "PI",
+  "bmoLegalEntity": "BMOCM01",
+  "counterpartyId": "CP2",
+  "group_cd": "G1"
+}
+
+### A3 LDN- prefix, trade RP
+# LDN- is the second London prefix: CP_BranchOfRepCp GB. RP is a GIVE code: CP_CpSide GIVE.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A3",
+  "trade_type": "RP",
+  "bmoLegalEntity": "LDN-02",
+  "counterpartyId": "CP3",
+  "group_cd": "G2"
+}
+
+### A4 trade LP gives TAKE
+# LP is in the TAKE list of the cpSide lookup: CP_CpSide TAKE.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A4",
+  "trade_type": "LP",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP4",
+  "group_cd": "G1"
+}
+
+### A5 unknown trade_type
+# A code that is not in the lookup gives an empty CP_CpSide. The row is still written.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A5",
+  "trade_type": "XX",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP5",
+  "group_cd": "G1"
+}
+
+### A6 trade_type missing
+# A missing field gives an empty CP_CpSide. The row is still written.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A6",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP6",
+  "group_cd": "G1"
+}
+
+### A7 reference data has no nature
+# The stub leaves out natureOfReportingCounterparty for counterpartyId NONATURE, so CP_NatureOfRepCp falls back to the default F.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "A7",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "NONATURE",
+  "group_cd": "G1"
+}
+
+### B1 malformed JSON
+# HTTP 200 with outcome REJECTED. The rejects file gets: rest-<n> TAB Malformed JSON.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{not json
+
+### B2 empty body
+# The rejects file gets: rest-<n> TAB Empty message.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+
+### B3 JSON array, not an object
+# The rejects file gets: rest-<n> TAB Not a JSON object.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+[1, 2]
+
+### C1 reference data answers 400
+# A 4xx is never retried. The rejects file gets: Reference data HTTP 400. Needs the stub (samples/refdata-stub.py).
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "C1",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "FAIL4XX",
+  "group_cd": "G1"
+}
+
+### C2 reference data answers 503
+# A 5xx is retried (3 attempts, short backoff, under a second) and then rejected: Reference data unavailable.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "C2",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "FAIL5XX",
+  "group_cd": "G1"
+}
+
+### C3 reference data too slow
+# The stub waits 8 seconds, longer than the 5 second read timeout. Three attempts take about 15 seconds, then: Reference data unavailable. Be patient.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "C3",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "SLOW",
+  "group_cd": "G1"
+}
+
+### D1 first row, flush=false
+# The row waits in the batch: no report file yet.
+POST {{host}}/api/test-message?flush=false
+Content-Type: application/json
+
+{
+  "trade_ref": "D1",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP1",
+  "group_cd": "G1"
+}
+
+### D2 second row, flush=false
+# Still waiting: no report file yet.
+POST {{host}}/api/test-message?flush=false
+Content-Type: application/json
+
+{
+  "trade_ref": "D2",
+  "trade_type": "PI",
+  "bmoLegalEntity": "BMOCM01",
+  "counterpartyId": "CP2",
+  "group_cd": "G1"
+}
+
+### D3 third row, flush=false
+# The batch of 3 is full: the report file is created with a header and 3 rows.
+POST {{host}}/api/test-message?flush=false
+Content-Type: application/json
+
+{
+  "trade_ref": "D3",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP1",
+  "group_cd": "G1"
+}
+
+### D4 fourth row, flush=false
+# Waits in a new batch: the file still has 3 rows.
+POST {{host}}/api/test-message?flush=false
+Content-Type: application/json
+
+{
+  "trade_ref": "D4",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP1",
+  "group_cd": "G1"
+}
+
+### D5 fifth row, default flush=true
+# flush=true (the default) writes everything waiting: the file now has 5 rows.
+POST {{host}}/api/test-message
+Content-Type: application/json
+
+{
+  "trade_ref": "D5",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP1",
+  "group_cd": "G1"
+}
+

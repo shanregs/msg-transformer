@@ -9,7 +9,7 @@ The engine takes messages from Kafka or an input file, asks the Reference Data S
 ```mermaid
 flowchart LR
     op(["Operator<br/>runs the app"]) -->|starts and configures| engine
-    op -->|optional: POST /api/test-message, rest profile| engine
+    op -->|optional: POST /api/test-message, rest or both profile| engine
     kafka[("Kafka broker<br/>topic trade-messages")] -->|messages| engine
     engine -->|commit offsets after rows are on disk| kafka
     file["Input file<br/>.txt JSON lines or .csv"] -->|messages| engine
@@ -47,7 +47,7 @@ flowchart TB
         route["KafkaIngestRoute<br/>Camel route, one consumer<br/>manual offset commit"]
         legacy["KafkaRecordListener<br/>previous listener<br/>PER_RECORD only"]
         file["FileInputRunner<br/>reads .txt or .csv lines<br/>flushes at end of file"]
-        rest["TestMessageController<br/>POST /api/test-message<br/>rest profile only"]
+        rest["TestMessageController<br/>POST /api/test-message<br/>rest or both profile"]
         pipe["<b>RecordPipeline</b><br/>one message at a time<br/>day, transform, append or reject<br/>runs the durable callback"]
         day["ReportDay<br/>one clock reading per message<br/>midnight in Asia/Kolkata"]
         tf["MessageTransformer<br/>parse, enrich, map"]

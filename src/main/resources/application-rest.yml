@@ -1,9 +1,12 @@
-# Run with --spring.profiles.active=rest to add POST /api/test-message (a quick way to push one message
-# through the whole flow). Combine with the file profile if Kafka is not wanted: rest,file
+# REST mode: no Kafka. Messages are sent one at a time to POST /api/test-message, which runs the whole flow
+# (reference data, mapping, write to the CSV). Handy for quick tests and debugging.
+# Run with --spring.profiles.active=rest   (change the port with --server.port=<port> if 8080 is busy)
 spring:
   main:
     web-application-type: servlet
 sftr:
+  kafka:
+    enabled: false
   rest:
     enabled: true
 server:
