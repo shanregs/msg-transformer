@@ -1,30 +1,65 @@
 # SFTR Mapping Engine: Code Flow and Class Guide
 
-Diagrams for this design are in [c4-architecture.md](c4-architecture.md).
+Diagrams for this design are in [c4-architecture.md](c4-architecture.md). Why the write modes and the Camel route were built this way: [design-camel-batch-writer.md](design-camel-batch-writer.md).
 
 ## Overview
 
 The app turns trade messages (JSON) into rows of an SFTR CSV report, and every output column is defined by one line of JSON config. It runs in two phases:
 
 1. **Startup (once):** `MappingConfigLoader` reads `sftr-field-mappings.json` and compiles each line into a small function. `RecordProcessor` holds the compiled list.
-2. **Per message (repeated):** an input source (file or Kafka) hands a message to `RecordPipeline`, which calls the reference-data service, runs the compiled functions, and appends one CSV row.
+2. **Per message (repeated):** an input source (Kafka through a Camel route, or a file) hands a message to `RecordPipeline`. The pipeline turns it into a row with `MessageTransformer`, and a `ReportSink` decides when the row is written to that day's CSV file.
 
-A bad message never stops the run. It goes to a `.rejects` file and processing continues with the next one.
+A bad message never stops the run. It goes to that day's `.rejects` file and processing continues with the next one.
 
 ## Per-message flow
 
-Both entry points are thin and call the same method, `RecordPipeline.handle(json, sourceRef)`.
+Both input components call the same method, `RecordPipeline.handle(json, sourceRef, whenDurable)`.
 
-- `FileInputRunner` runs only when `sftr.input.file` is set. A `.txt` file is read as one JSON message per line (blank lines skipped). A `.csv` file uses its header row as keys, and each row becomes a flat JSON object before it goes on. It counts rows written vs. rejected, and a bad line never stops the run.
-- `KafkaRecordListener` consumes one message at a time on one thread and acknowledges the offset after handling. It is switched off by the `file` profile (`sftr.kafka.enabled: false`).
+- `KafkaIngestRoute` (default, `sftr.ingest: camel`) is a Camel route with one Kafka consumer. Messages are handled one at a time on the consumer thread. Offsets are not committed automatically: after each message the route commits the offsets that `OffsetCommitter` holds (see "Offsets" below).
+- `KafkaRecordListener` (`sftr.ingest: spring-kafka`) is the previous Spring Kafka listener. It acknowledges right after handling, so it only starts with `write-mode: PER_RECORD`.
+- `FileInputRunner` runs only when `sftr.input.file` is set. A `.txt` file is read as one JSON message per line (blank lines skipped). A `.csv` file uses its header row as keys, and each row becomes a flat JSON object. It counts rows written vs. rejected, never stops on a bad line, and calls `pipeline.flush()` at the end so batch modes write the last rows.
+- Both Kafka components are off when `sftr.kafka.enabled: false` (the `file` profile).
 
 Inside `RecordPipeline.handle()`:
 
-1. `map(json)` parses the JSON and checks it is an object.
-2. `RefDataClient.fetch(message)` POSTs selected message fields to the reference-data service. It retries 5xx and timeouts, never 4xx.
-3. `RecordProcessor.process(message, ProcessingContext)` runs every active mapping and returns an `SftrTransactionReport`.
-4. `SftrCsvWriter` appends the row. The writer is opened lazily on the first row and flushed per record by default.
-5. If steps 1-3 throw, `reject()` writes `sourceRef<TAB>summary` to the `.rejects` file and the outcome is `REJECTED`. The summary never contains message content, because the data is regulatory.
+1. `ReportDay.today()` reads the clock once. That date is the day of the message: it goes into the row and picks the file, so the two cannot disagree around midnight.
+2. `MessageTransformer.transform(json, day)` parses the JSON, calls `RefDataClient.fetch` (POST to the reference-data service, retrying 5xx and timeouts, never 4xx) and runs `RecordProcessor.process`. It returns a row or throws.
+3. On success, `ReportSink.append(row, day, whenDurable)` hands the row to the sink.
+4. On failure, `RejectWriter.write(sourceRef, summary, day)` appends `sourceRef<TAB>summary` to the day's rejects file, then `sink.whenDurable(whenDurable)`. The summary never contains message content, because the data is regulatory.
+
+`whenDurable` is a callback that runs once the message's outcome is on disk: its row is in the CSV, or its reject line is written and every earlier row is in the CSV too.
+
+## Write modes (`sftr.output.write-mode`)
+
+`ReportSinkConfig` creates the sink for the chosen mode. `OutputProperties` validates the settings at startup and names the bad key.
+
+| Mode | Sink | When rows reach the CSV |
+| --- | --- | --- |
+| `PER_RECORD` (default) | `PerRecordSink` | Open the file, append the row, close the file, for every message. |
+| `COUNT` | `BatchingSink` | Rows wait in a list and are written as one batch when `batch-size` rows are waiting. |
+| `INTERVAL` | `BatchingSink` | Rows wait and are written as one batch when the oldest waiting row is `batch-interval` old. A flusher virtual thread watches the deadline, so rows are written even when no more messages arrive. |
+
+`BatchingSink` also writes the batch when:
+
+- the next row belongs to a different day (a batch never mixes two days);
+- midnight passes in `file-zone` (rows from late evening do not wait into the next day);
+- `max-buffered-records` is reached, or the sink is closed.
+
+If a batch cannot be written, the rows stay in the list and the write is retried after 5 seconds. If the list is full and cannot be written, `append` throws and the new row is not accepted. One lock guards the list and the file, so the consumer thread and the flusher never write at the same time.
+
+## Daily files
+
+With `sftr.output.rollover: DAILY` (default), `OutputFileResolver` adds the date before the extension: `sftr-report.csv` becomes `sftr-report-2026-10-16.csv`, and the default rejects file is `sftr-report-2026-10-16.csv.rejects`. A new day starts when the first row of that day arrives, so quiet days leave no empty files, and each new file gets its own header. The day changes at midnight in `sftr.output.file-zone` (default `Asia/Kolkata`). `sftr.output.file-date` pins the date used in the rows and the file names, which is useful for replays. `rollover: NONE` keeps one file with the configured name.
+
+## Offsets (Kafka with the Camel route)
+
+An offset is committed only after everything up to it is on disk, so with batching a crash never loses rows that were only in memory.
+
+1. `KafkaIngestRoute` gives `RecordPipeline` a callback that calls `OffsetCommitter.release(partition, offset, commit)`.
+2. The sink runs the callback after the row is written: right away in `PER_RECORD`, after the batch in `COUNT` and `INTERVAL`. A rejected message's callback waits behind the rows before it.
+3. Only the Kafka consumer thread may commit (committing from another thread throws `ConcurrentModificationException`). So the route calls `OffsetCommitter.commitReleased()` after every message. A batch written by the consumer thread (`COUNT`, or a day change) is committed at once. A batch written by the flusher thread (`INTERVAL`) is committed when the next message arrives.
+
+Delivery is at least once: after a crash or restart, messages whose rows were written but whose offset was not yet committed are read again and written twice. In `INTERVAL` mode that window lasts until the next message arrives.
 
 ## How the JSON config becomes running logic
 
@@ -55,10 +90,13 @@ All classes are under `com.bmo.sftr.mapping`.
 
 | Package / class | Role |
 | --- | --- |
-| `SftrMappingApplication` | Spring Boot entry point. Registers `SftrConstants` and `RefDataClient.Properties` as configuration properties. |
-| `input.FileInputRunner` | Batch alternative to Kafka. Reads a `.txt` (JSON lines) or `.csv` file and calls the pipeline per line. |
-| `kafka.KafkaRecordListener` | Kafka consumer, one message at a time, acknowledges after handling. |
-| `service.RecordPipeline` | Coordinates one message: parse, ref-data fetch, map, write, or reject. Single-threaded by design because it owns one open output file. |
+| `SftrMappingApplication` | Spring Boot entry point. Registers `SftrConstants`, `RefDataClient.Properties` and `OutputProperties` as configuration properties. |
+| `camel.KafkaIngestRoute` | Camel route: one Kafka consumer, manual offset commit, calls the pipeline, then commits released offsets. Stops itself before the sink closes. |
+| `camel.OffsetCommitter` | Holds offsets whose rows are on disk until the consumer thread commits them. Keeps the highest per partition. |
+| `kafka.KafkaRecordListener` | Previous Spring Kafka listener, used when `sftr.ingest=spring-kafka`. `PER_RECORD` only. |
+| `input.FileInputRunner` | Batch alternative to Kafka. Reads a `.txt` (JSON lines) or `.csv` file, calls the pipeline per line, flushes at the end. |
+| `service.RecordPipeline` | Coordinates one message: take the day, transform, append to the sink or write a reject, run the callback. Single-threaded by design. |
+| `service.MessageTransformer` | Parse, reference-data fetch, run the mappings. Returns a row or throws. |
 | `engine.MappingConfigLoader` | Startup: reads and validates the JSON config, compiles rows into `Column` and `CompiledMapping`. |
 | `engine.RecordProcessor` | Holds the compiled config and runs the active mappings for each message. |
 | `functions.SftrMappingFunctions` | Registry of named business-logic lambdas, for example `CP_CpSide` and `CP_BranchOfRepCp`. |
@@ -70,24 +108,32 @@ All classes are under `com.bmo.sftr.mapping`.
 | `model.SftrConstants` | Constants from `application.yml`: single values, lists and lookup tables (for example `cpSide`). |
 | `model.SftrTransactionReport` | One output row: a plain object with one field per CSV column. |
 | `refdata.RefDataClient` | HTTP POST to the reference-data service with retries (5xx and timeouts only) and timeouts from config. |
-| `output.SftrCsvWriter` | Opens the CSV (header from the `Column` list), appends rows, and reads each value back from the report by reflection. |
+| `output.OutputProperties` | Typed `sftr.output` settings with startup validation: file, rejects file, file date, rollover, zone, write mode, batch size, batch interval, buffer cap. |
+| `output.ReportDay` | The date of a message: the clock in `file-zone`, or the pinned `file-date`. |
+| `output.OutputFileResolver` | Maps a date to the report and rejects file paths. |
+| `output.ReportSink` / `ReportSinkConfig` | The sink interface (`append`, `whenDurable`, `flush`, `close`) and the bean that picks the implementation from `write-mode`. A `Clock` bean in `file-zone` is defined here too. |
+| `output.PerRecordSink` | Open, append, close per row. |
+| `output.BatchingSink` | Buffer, lock, count and timer triggers, day and midnight flush, retry after a failed write, flusher virtual thread. |
+| `output.RejectWriter` | Appends reject lines to the day's rejects file and builds the content-free reason. |
+| `output.SftrCsvWriter` | Opens the CSV (header from the `Column` list, only for a new or empty file), writes rows, reads each value back from the report by reflection. |
 
-**Configuration files.** `application.yml` holds Kafka, output paths, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `sftr-field-mappings.json` is the column definitions.
+**Configuration files.** `application.yml` holds the ingest choice, Kafka, output settings, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `sftr-field-mappings.json` is the column definitions.
 
 ## Worked example: one line end to end
 
-Take the first line of `samples/input.txt`: `{"trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}`.
+Take the first line of `samples/input.txt`: `{"trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}`, run with the `file` profile and `write-mode: COUNT`, `batch-size: 3`.
 
-1. `FileInputRunner.readLines` reads the line and calls `handle(line, "input.txt:1")`.
-2. `RecordPipeline` parses it, then `RefDataClient` posts `bmoLegalEntity`, `counterpartyId`, `group_cd` and `delegated` (only those present) to the ref-data service and gets a JSON response.
+1. `FileInputRunner.readLines` reads the line and calls `handle(line, "input.txt:1", ...)`.
+2. `RecordPipeline` takes today's date (say 2026-10-16) and `MessageTransformer` parses the line. `RefDataClient` posts `bmoLegalEntity`, `counterpartyId`, `group_cd` and `delegated` (only those present) and gets a JSON response.
 3. `RecordProcessor` loops through the active mappings:
     - `IM_SubmitterID` is a `HARDCODE`, so it gets `BMOLN9000003`.
     - `CP_CpSide` is a `TRANSFORM`. The lambda looks up `PO` in the `cpSide` table and returns `GIVE`.
     - `CP_RepCp` is an `ENRICH`. It reads the LEI from the ref-data response at `find_sftr_party.values.lei`.
     - `CP_BranchOfRepCp` is a `TRANSFORM`. `LDNBB01` starts with the London prefix `LDNBB`, so the result is `GB`.
-4. `SftrCsvWriter` writes the filled report as one CSV row, in header order.
+4. `BatchingSink` keeps the row. Nothing is in `sftr-report-2026-10-16.csv` yet.
+5. The third valid row completes the batch: `SftrCsvWriter` opens the day's file, writes the header and the three rows, and closes it. `FileInputRunner` also calls `flush()` at the end of the file for rows still waiting.
 
-The line `this line is not json` in the same file fails at parsing. It is written to the `.rejects` file as `input.txt:5<TAB>Malformed JSON`, and the run continues.
+The line `this line is not json` in the same file fails at parsing. It is written to `sftr-report-2026-10-16.csv.rejects` as `input.txt:5<TAB>Malformed JSON`, and the run continues.
 
 ## How to add or change a column
 
@@ -99,3 +145,7 @@ The line `this line is not json` in the same file fails at parsing. It is writte
 | Park a column | Set `status` to `PENDING` or `IGNORE`. The column stays in the CSV, empty. |
 
 A wrong name, a missing constant or an unregistered handler fails at startup with a list of all problems, not at the first message.
+
+## Running the tests
+
+`mvn test` needs no broker. Two end-to-end tests use a real Kafka and run only with `-Dkafka.it=true` and a broker on `localhost:19092`: `CamelCountModeKafkaTest` and `CamelIntervalModeKafkaTest`.
