@@ -27,9 +27,11 @@ flowchart TD
     F -->|"sftr.ingest=spring-kafka"| H["KafkaRecordListener starts<br/>(PER_RECORD only)"]
     F -->|"sftr.input.file set"| I["FileInputRunner runs,<br/>then the app exits"]
     F -->|"rest or both profile"| J["TestMessageController<br/>+ web server"]
+    F -->|"publisher profile"| PB["MessagePublisherRoute<br/>sends generated messages to Kafka,<br/>exits at the first limit"]
     G --> K["Waiting for messages<br/>(camel.main.run-controller keeps the JVM alive)"]
     H --> K
     J --> K
+    PB --> K
 ```
 
 ## Per-message flow
@@ -180,7 +182,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `functions.SftrMappingFunctions` | Registry of named business-logic lambdas, for example `CP_CpSide` and `CP_BranchOfRepCp`. |
 | `functions.RefDataExtractors` | Reads values from the ref-data response by dotted path, for example `find_sftr_party.values.lei`. |
 | `functions.DateHelpers` | Date parsing and formatting helpers, including the flexible ISO parser. |
-| `model.FieldMapping` | One config row (record) with the enums `Type`, `Status` and `Formatter`. |
+| `model.FieldMapping` | One config row (record) with the enums `MappingType`, `Status` and `DataFormatter`. |
 | `model.MappingFunction` | The functional interface every mapping compiles to, plus a null-safe `text()` helper. |
 | `model.ProcessingContext` | Per-message bundle: `refData`, `constants`, `fileDate`. |
 | `model.SftrConstants` | Constants from `application.yml`: single values, lists and lookup tables (for example `cpSide`). |
