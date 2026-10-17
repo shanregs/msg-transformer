@@ -1,6 +1,5 @@
 package com.bmo.sftr.mapping.output;
 
-import com.bmo.sftr.mapping.engine.RecordProcessor;
 import com.bmo.sftr.mapping.model.SftrTransactionReport;
 import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
 import java.io.IOException;
@@ -43,7 +42,6 @@ public class BatchingSink implements ReportSink {
     static final Duration RETRY_DELAY = Duration.ofSeconds(5);
 
     private final SftrCsvWriter csvWriter;
-    private final RecordProcessor processor;
     private final OutputFileResolver files;
     private final WriteMode mode;
     private final int batchSize;
@@ -62,19 +60,17 @@ public class BatchingSink implements ReportSink {
     private boolean closed;
     private Thread flusher;
 
-    public BatchingSink(SftrCsvWriter csvWriter, RecordProcessor processor, OutputFileResolver files,
-                        OutputProperties props, Clock clock) {
-        this(csvWriter, processor, files, props, clock, true);
+    public BatchingSink(SftrCsvWriter csvWriter, OutputFileResolver files, OutputProperties props, Clock clock) {
+        this(csvWriter, files, props, clock, true);
     }
 
     /** @param flusherThread false lets tests drive the timer by calling {@link #flushIfDue()} with their own clock */
-    BatchingSink(SftrCsvWriter csvWriter, RecordProcessor processor, OutputFileResolver files,
+    BatchingSink(SftrCsvWriter csvWriter, OutputFileResolver files,
                  OutputProperties props, Clock clock, boolean flusherThread) {
         if (props.writeMode() == WriteMode.PER_RECORD) {
             throw new IllegalArgumentException("BatchingSink needs write-mode COUNT or INTERVAL");
         }
         this.csvWriter = csvWriter;
-        this.processor = processor;
         this.files = files;
         this.mode = props.writeMode();
         this.batchSize = props.batchSize();
@@ -187,7 +183,7 @@ public class BatchingSink implements ReportSink {
      */
     private void flushLocked(List<Runnable> released) throws IOException {
         if (buffer.isEmpty()) return;
-        try (SftrCsvWriter.Session csv = csvWriter.openAppend(files.report(bufferDay), processor.columnDefs())) {
+        try (SftrCsvWriter.Session csv = csvWriter.openAppend(files.report(bufferDay))) {
             for (SftrTransactionReport row : buffer) csv.write(row);
         } catch (IOException | RuntimeException e) {
             retryAt = clock.instant().plus(RETRY_DELAY);

@@ -1,6 +1,5 @@
 package com.bmo.sftr.mapping.output;
 
-import com.bmo.sftr.mapping.engine.RecordProcessor;
 import com.bmo.sftr.mapping.model.SftrTransactionReport;
 import java.io.IOException;
 import java.time.LocalDate;
@@ -14,18 +13,16 @@ import java.time.LocalDate;
 public class PerRecordSink implements ReportSink {
 
     private final SftrCsvWriter csvWriter;
-    private final RecordProcessor processor;
     private final OutputFileResolver files;
 
-    public PerRecordSink(SftrCsvWriter csvWriter, RecordProcessor processor, OutputFileResolver files) {
+    public PerRecordSink(SftrCsvWriter csvWriter, OutputFileResolver files) {
         this.csvWriter = csvWriter;
-        this.processor = processor;
         this.files = files;
     }
 
     @Override
     public void append(SftrTransactionReport report, LocalDate day, Runnable whenDurable) throws IOException {
-        try (SftrCsvWriter.Session csv = csvWriter.openAppend(files.report(day), processor.columnDefs())) {
+        try (SftrCsvWriter.Session csv = csvWriter.openAppend(files.report(day))) {
             csv.write(report);
         }
         whenDurable.run();

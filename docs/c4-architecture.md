@@ -65,6 +65,7 @@ flowchart TB
         files["OutputFileResolver<br/>daily file names"]
         props["OutputProperties<br/>write-mode, batch-size, batch-interval,<br/>rollover, file-zone, validated at startup"]
         loader["MappingConfigLoader<br/>reads and validates JSON<br/>compiles each row"]
+        cfgbean["CompiledConfig (bean)<br/>the mapping file compiled once<br/>columns + active mappings"]
         fns["SftrMappingFunctions<br/>named business lambdas<br/>+ RefDataExtractors, DateHelpers"]
         cols["OutputColumns<br/>one constant per output column<br/>lambdas register against these"]
         consts["SftrConstants<br/>values, lists, lookups"]
@@ -95,7 +96,9 @@ flowchart TB
         files -.->|file for the day| batch
         files -.->|file for the day| rej
         props -.->|selects sink and limits| sink
-        loader -.->|compiled| proc
+        loader -.->|compiled once| cfgbean
+        cfgbean -.->|active mappings| proc
+        cfgbean -.->|columns, CSV order| csv
         fns -.->|find by name| loader
         cols -.->|names used for registration| fns
         kpub -.->|publish to the topic, outside the engine| pub_topic
@@ -112,7 +115,7 @@ flowchart TB
 
 ### Config compilation (startup)
 
-At startup `MappingConfigLoader.load()` turns every `FieldMapping` into a `Column`, and every active one also into a `CompiledMapping` that wraps a `MappingFunction`. `RecordProcessor` keeps the resulting `CompiledConfig` and, for each message, creates an `SftrTransactionReport` and fills it by running the compiled mappings. `Column.read` pulls the values back out when the CSV row is written.
+At startup `MappingConfigLoader.load()` turns every `FieldMapping` into a `Column`, and every active one also into a `CompiledMapping` that wraps a `MappingFunction`. `MappingConfiguration` exposes the result as one `CompiledConfig` bean. `RecordProcessor` takes the active mappings from it and, for each message, creates an `SftrTransactionReport` and fills it by running the compiled mappings. `SftrCsvWriter` takes the `Column` list from the same bean, so the sinks never need the rules engine; `Column.read` pulls the values back out when the CSV row is written.
 
 ```mermaid
 classDiagram
@@ -130,7 +133,10 @@ classDiagram
     class RecordProcessor {
         <<component>>
         process(message, ctx)
-        columnDefs()
+    }
+    class MappingConfiguration {
+        <<configuration>>
+        compiledConfig(loader) CompiledConfig
     }
     class CompiledConfig {
         <<record>>
@@ -157,8 +163,10 @@ classDiagram
     }
 
     MappingConfigLoader ..> FieldMapping : reads
-    RecordProcessor ..> MappingConfigLoader : load() at startup
-    MappingConfigLoader ..> CompiledConfig : returns
+    MappingConfiguration ..> MappingConfigLoader : load() once at startup
+    MappingConfiguration ..> CompiledConfig : exposes as a bean
+    RecordProcessor ..> CompiledConfig : active mappings
+    SftrCsvWriter ..> CompiledConfig : columns
     CompiledConfig o-- CompiledMapping : active
     CompiledConfig o-- Column : columns
     CompiledMapping --> MappingFunction : fn
@@ -215,7 +223,8 @@ classDiagram
         handle(exchange)
     }
     class SftrCsvWriter {
-        openAppend(file, columns) Session
+        columns from CompiledConfig
+        openAppend(file) Session
     }
 
     ReportSink <|.. PerRecordSink

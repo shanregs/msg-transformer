@@ -48,7 +48,7 @@ class WriteModesGoldenTest {
                 mode, 3, Duration.ofMinutes(30), 1000);
         Clock clock = Clock.system(KOLKATA);
         OutputFileResolver files = new OutputFileResolver(props);
-        var sink = new ReportSinkConfig().reportSink(props, new SftrCsvWriter(','), processor, files, clock);
+        var sink = new ReportSinkConfig().reportSink(props, TestSupport.csvWriter(), files, clock);
         RecordPipeline pipeline = new RecordPipeline(
                 new MessageTransformer(refData, processor, TestSupport.realConstants(), TestSupport.MAPPER),
                 sink, new RejectWriter(files), new ReportDay(props, clock));

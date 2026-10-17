@@ -11,6 +11,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,22 +19,30 @@ import org.springframework.stereotype.Component;
 public class SftrCsvWriter {
 
     private final char delimiter;
+    private final List<MappingConfigLoader.Column> columns;
 
-    public SftrCsvWriter(@Value("${sftr.csv.delimiter:,}") char delimiter) {
+    /** The columns, in CSV order, come from the compiled mapping file. */
+    @Autowired
+    public SftrCsvWriter(@Value("${sftr.csv.delimiter:,}") char delimiter, MappingConfigLoader.CompiledConfig config) {
+        this(delimiter, config.columns());
+    }
+
+    public SftrCsvWriter(char delimiter, List<MappingConfigLoader.Column> columns) {
         this.delimiter = delimiter;
+        this.columns = List.copyOf(columns);
     }
 
     /** Creates or truncates the file and writes the header. */
-    public Session open(Path file, List<MappingConfigLoader.Column> columns) throws IOException {
-        return open(file, columns, false);
+    public Session open(Path file) throws IOException {
+        return open(file, false);
     }
 
     /** Appends to an existing file (the header is written only when the file is new or empty). */
-    public Session openAppend(Path file, List<MappingConfigLoader.Column> columns) throws IOException {
-        return open(file, columns, true);
+    public Session openAppend(Path file) throws IOException {
+        return open(file, true);
     }
 
-    private Session open(Path file, List<MappingConfigLoader.Column> columns, boolean append) throws IOException {
+    private Session open(Path file, boolean append) throws IOException {
         Path parent = file.toAbsolutePath().getParent();
         if (parent != null) Files.createDirectories(parent);
         boolean header = !append || !Files.exists(file) || Files.size(file) == 0;

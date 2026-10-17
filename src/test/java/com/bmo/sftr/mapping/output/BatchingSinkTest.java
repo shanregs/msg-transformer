@@ -1,10 +1,10 @@
 package com.bmo.sftr.mapping.output;
 
+import com.bmo.sftr.mapping.TestSupport;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.bmo.sftr.mapping.engine.MappingConfigLoaderTest;
-import com.bmo.sftr.mapping.engine.RecordProcessor;
 import com.bmo.sftr.mapping.model.SftrTransactionReport;
 import com.bmo.sftr.mapping.output.OutputProperties.Rollover;
 import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
@@ -48,14 +48,14 @@ class BatchingSinkTest {
         int failures;
 
         FlakyWriter(int failures) {
-            super(',');
+            super(',', MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json").load().columns());
             this.failures = failures;
         }
 
         @Override
-        public Session openAppend(Path file, List<com.bmo.sftr.mapping.engine.MappingConfigLoader.Column> columns) throws IOException {
+        public Session openAppend(Path file) throws IOException {
             if (failures-- > 0) throw new IOException("disk full");
-            return super.openAppend(file, columns);
+            return super.openAppend(file);
         }
     }
 
@@ -64,12 +64,11 @@ class BatchingSinkTest {
 
     // 10:00 in Kolkata on 16 Oct
     private final MovableClock clock = new MovableClock("2026-10-16T04:30:00Z");
-    private final RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
 
     private BatchingSink sink(WriteMode mode, int size, Duration interval, int max, SftrCsvWriter writer) {
         OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, null, Rollover.DAILY, KOLKATA,
                 mode, size, interval, max);
-        return new BatchingSink(writer, processor, new OutputFileResolver(props), props, clock, false);
+        return new BatchingSink(writer, new OutputFileResolver(props), props, clock, false);
     }
 
     private static SftrTransactionReport row(String side) {
@@ -88,7 +87,7 @@ class BatchingSinkTest {
 
     @Test
     void countModeWritesOnlyWhenTheBatchIsFullAndKeepsOrder() throws Exception {
-        BatchingSink s = sink(WriteMode.COUNT, 3, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 3, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         s.append(row("GIVE"), DAY1);
         s.append(row("TAKE"), DAY1);
         assertThat(day(DAY1)).doesNotExist();
@@ -107,7 +106,7 @@ class BatchingSinkTest {
 
     @Test
     void intervalModeWaitsForTheOldestRowToReachTheInterval() throws Exception {
-        BatchingSink s = sink(WriteMode.INTERVAL, 10, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.INTERVAL, 10, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         s.append(row("GIVE"), DAY1);
         clock.advance(Duration.ofMinutes(4));
         s.append(row("TAKE"), DAY1);                       // newer row does not restart the timer
@@ -123,7 +122,7 @@ class BatchingSinkTest {
 
     @Test
     void intervalModeIgnoresTheCountButStillHonoursTheBufferCap() throws Exception {
-        BatchingSink s = sink(WriteMode.INTERVAL, 1, Duration.ofMinutes(5), 2, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.INTERVAL, 1, Duration.ofMinutes(5), 2, TestSupport.csvWriter());
         s.append(row("GIVE"), DAY1);
         s.append(row("TAKE"), DAY1);
         assertThat(day(DAY1)).doesNotExist();              // batch-size is not used in INTERVAL mode
@@ -134,7 +133,7 @@ class BatchingSinkTest {
 
     @Test
     void aNewDayFlushesTheOldDaysRowsFirst() throws Exception {
-        BatchingSink s = sink(WriteMode.COUNT, 100, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 100, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         s.append(row("GIVE"), DAY1);
         s.append(row("TAKE"), DAY1);
         s.append(row("GIVE"), DAY2);
@@ -148,7 +147,7 @@ class BatchingSinkTest {
 
     @Test
     void rowsFromLateEveningAreWrittenAtMidnightEvenInCountMode() throws Exception {
-        BatchingSink s = sink(WriteMode.COUNT, 100, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 100, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         clock.advance(Duration.ofHours(13).plusMinutes(58));          // 23:58 in Kolkata
         s.append(row("GIVE"), DAY1);
         clock.advance(Duration.ofMinutes(1));                         // 23:59
@@ -160,7 +159,7 @@ class BatchingSinkTest {
 
     @Test
     void midnightCutsTheIntervalShort() throws Exception {
-        BatchingSink s = sink(WriteMode.INTERVAL, 10, Duration.ofMinutes(30), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.INTERVAL, 10, Duration.ofMinutes(30), 1000, TestSupport.csvWriter());
         clock.advance(Duration.ofHours(13).plusMinutes(58));          // 23:58
         s.append(row("GIVE"), DAY1);
         clock.advance(Duration.ofMinutes(2));                         // 00:00, only 2 of 30 minutes passed
@@ -207,7 +206,7 @@ class BatchingSinkTest {
 
     @Test
     void closeWritesWhatIsLeftAndThenRefusesRows() throws Exception {
-        BatchingSink s = sink(WriteMode.COUNT, 100, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 100, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         s.append(row("GIVE"), DAY1);
         s.close();
         assertThat(sides(day(DAY1))).containsExactly("GIVE");
@@ -219,7 +218,7 @@ class BatchingSinkTest {
         OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, null, Rollover.DAILY, KOLKATA,
                 WriteMode.INTERVAL, 10, Duration.ofMillis(200), 1000);
         Clock real = Clock.system(KOLKATA);
-        BatchingSink s = new BatchingSink(new SftrCsvWriter(','), processor, new OutputFileResolver(props), props, real);
+        BatchingSink s = new BatchingSink(TestSupport.csvWriter(), new OutputFileResolver(props), props, real);
         LocalDate today = LocalDate.now(real);
         try {
             s.append(row("GIVE"), today);
@@ -236,7 +235,7 @@ class BatchingSinkTest {
 
     @Test
     void callbacksRunInOrderOnlyAfterTheirRowsAreWritten() throws Exception {
-        BatchingSink s = sink(WriteMode.COUNT, 2, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 2, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         List<String> done = new java.util.ArrayList<>();
         s.append(row("GIVE"), DAY1, () -> done.add("first"));
         s.whenDurable(() -> done.add("reject-after-first"));
@@ -249,7 +248,7 @@ class BatchingSinkTest {
 
     @Test
     void whenDurableRunsAtOnceWhenNothingIsWaiting() {
-        BatchingSink s = sink(WriteMode.COUNT, 5, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 5, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         List<String> done = new java.util.ArrayList<>();
         s.whenDurable(() -> done.add("now"));
         assertThat(done).containsExactly("now");
@@ -270,7 +269,7 @@ class BatchingSinkTest {
 
     @Test
     void aFailingCallbackDoesNotStopTheOthers() throws Exception {
-        BatchingSink s = sink(WriteMode.COUNT, 2, Duration.ofMinutes(5), 1000, new SftrCsvWriter(','));
+        BatchingSink s = sink(WriteMode.COUNT, 2, Duration.ofMinutes(5), 1000, TestSupport.csvWriter());
         List<String> done = new java.util.ArrayList<>();
         s.append(row("GIVE"), DAY1, () -> { throw new IllegalStateException("boom"); });
         s.append(row("TAKE"), DAY1, () -> done.add("second"));
@@ -282,7 +281,7 @@ class BatchingSinkTest {
     void perRecordModeIsNotABatchMode() {
         OutputProperties props = new OutputProperties("x.csv", null, null, Rollover.DAILY, KOLKATA,
                 WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000);
-        assertThatThrownBy(() -> new BatchingSink(new SftrCsvWriter(','), processor, new OutputFileResolver(props), props, clock))
+        assertThatThrownBy(() -> new BatchingSink(TestSupport.csvWriter(), new OutputFileResolver(props), props, clock))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -291,7 +290,7 @@ class BatchingSinkTest {
         for (WriteMode m : new WriteMode[] {WriteMode.COUNT, WriteMode.INTERVAL}) {
             OutputProperties props = new OutputProperties(dir.resolve("o.csv").toString(), null, null, Rollover.DAILY,
                     KOLKATA, m, 10, Duration.ofMinutes(5), 1000);
-            assertThat(new ReportSinkConfig().reportSink(props, new SftrCsvWriter(','), processor,
+            assertThat(new ReportSinkConfig().reportSink(props, TestSupport.csvWriter(),
                     new OutputFileResolver(props), clock)).isInstanceOf(BatchingSink.class);
         }
     }

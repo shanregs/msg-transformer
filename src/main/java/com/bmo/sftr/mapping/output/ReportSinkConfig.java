@@ -1,6 +1,5 @@
 package com.bmo.sftr.mapping.output;
 
-import com.bmo.sftr.mapping.engine.RecordProcessor;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -17,11 +16,11 @@ public class ReportSinkConfig {
     }
 
     @Bean
-    public ReportSink reportSink(OutputProperties props, SftrCsvWriter csvWriter, RecordProcessor processor,
+    public ReportSink reportSink(OutputProperties props, SftrCsvWriter csvWriter,
                                  OutputFileResolver files, Clock clock) {
         return switch (props.writeMode()) {
-            case PER_RECORD -> new PerRecordSink(csvWriter, processor, files);
-            case COUNT, INTERVAL -> new BatchingSink(csvWriter, processor, files, props, clock);
+            case PER_RECORD -> new PerRecordSink(csvWriter, files);
+            case COUNT, INTERVAL -> new BatchingSink(csvWriter, files, props, clock);
         };
     }
 }

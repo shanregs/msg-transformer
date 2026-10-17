@@ -3,25 +3,24 @@ package com.bmo.sftr.mapping.engine;
 import com.bmo.sftr.mapping.model.ProcessingContext;
 import com.bmo.sftr.mapping.model.SftrTransactionReport;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
+/** Runs the active mappings for one message. The column list belongs to the CSV writer, not to this class. */
 @Component
 public class RecordProcessor {
 
-    private static final Logger log = LoggerFactory.getLogger(RecordProcessor.class);
-
-    private final List<MappingConfigLoader.Column> columns;                // every row, config order
     private final List<MappingConfigLoader.CompiledMapping> mappings;      // active rows only
 
+    @Autowired
+    public RecordProcessor(MappingConfigLoader.CompiledConfig config) {
+        this.mappings = config.active();
+    }
+
+    /** Compiles the mapping file itself; for tests that do not use the Spring-managed {@code CompiledConfig}. */
     public RecordProcessor(MappingConfigLoader loader) {
-        MappingConfigLoader.CompiledConfig cfg = loader.load();
-        this.columns = cfg.columns();
-        this.mappings = cfg.active();
-        log.info("SFTR mappings: {} columns, {} active, {} skipped (PENDING/IGNORE/NOT_APPLICABLE)",
-                columns.size(), mappings.size(), cfg.skipped());
+        this(loader.load());
     }
 
     public SftrTransactionReport process(JsonNode message, ProcessingContext ctx) {
@@ -34,9 +33,5 @@ public class RecordProcessor {
             }
         }
         return report;
-    }
-
-    public List<MappingConfigLoader.Column> columnDefs() {
-        return columns;
     }
 }

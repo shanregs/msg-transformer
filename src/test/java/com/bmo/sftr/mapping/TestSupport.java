@@ -1,6 +1,8 @@
 package com.bmo.sftr.mapping;
 
+import com.bmo.sftr.mapping.engine.MappingConfigLoaderTest;
 import com.bmo.sftr.mapping.model.SftrConstants;
+import com.bmo.sftr.mapping.output.SftrCsvWriter;
 import java.io.IOException;
 import java.util.List;
 import org.springframework.boot.context.properties.bind.Bindable;
@@ -18,6 +20,16 @@ public final class TestSupport {
     private TestSupport() {}
 
     public static final ObjectMapper MAPPER = JsonMapper.builder().build();
+
+    /** A CSV writer with the columns of the real mapping file. */
+    public static SftrCsvWriter csvWriter() {
+        return csvWriter(',');
+    }
+
+    public static SftrCsvWriter csvWriter(char delimiter) {
+        return new SftrCsvWriter(delimiter,
+                MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json").load().columns());
+    }
 
     public static SftrConstants realConstants() {
         return bindConstants("application.yml");
