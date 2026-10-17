@@ -1,0 +1,13 @@
+# Local seeding. Run with --spring.profiles.active=seed (IntelliJ: Active profiles = seed).
+# - creates the trade table if it does not exist (the database sftr itself must exist)
+# - inserts 10 sample RECEIVED trades, but only if the table is empty
+# Use it once, then start the application without the profile. Never use it against a real database.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+sftr:
+  db:
+    seed:
+      enabled: true
+      count: 10

@@ -66,7 +66,7 @@ class BatchingSinkTest {
     private final MovableClock clock = new MovableClock("2026-10-16T04:30:00Z");
 
     private BatchingSink sink(WriteMode mode, int size, Duration interval, int max, SftrCsvWriter writer) {
-        OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, null, Rollover.DAILY, KOLKATA,
+        OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, Rollover.DAILY, KOLKATA,
                 mode, size, interval, max);
         return new BatchingSink(writer, new OutputFileResolver(props), props, clock, false);
     }
@@ -215,7 +215,7 @@ class BatchingSinkTest {
 
     @Test
     void theFlusherThreadWritesWithoutAnyFurtherMessages() throws Exception {
-        OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, null, Rollover.DAILY, KOLKATA,
+        OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, Rollover.DAILY, KOLKATA,
                 WriteMode.INTERVAL, 10, Duration.ofMillis(200), 1000);
         Clock real = Clock.system(KOLKATA);
         BatchingSink s = new BatchingSink(TestSupport.csvWriter(), new OutputFileResolver(props), props, real);
@@ -279,7 +279,7 @@ class BatchingSinkTest {
 
     @Test
     void perRecordModeIsNotABatchMode() {
-        OutputProperties props = new OutputProperties("x.csv", null, null, Rollover.DAILY, KOLKATA,
+        OutputProperties props = new OutputProperties("x.csv", null, Rollover.DAILY, KOLKATA,
                 WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000);
         assertThatThrownBy(() -> new BatchingSink(TestSupport.csvWriter(), new OutputFileResolver(props), props, clock))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -288,7 +288,7 @@ class BatchingSinkTest {
     @Test
     void configSelectsTheBatchingSinkForCountAndInterval() {
         for (WriteMode m : new WriteMode[] {WriteMode.COUNT, WriteMode.INTERVAL}) {
-            OutputProperties props = new OutputProperties(dir.resolve("o.csv").toString(), null, null, Rollover.DAILY,
+            OutputProperties props = new OutputProperties(dir.resolve("o.csv").toString(), null, Rollover.DAILY,
                     KOLKATA, m, 10, Duration.ofMinutes(5), 1000);
             assertThat(new ReportSinkConfig().reportSink(props, TestSupport.csvWriter(),
                     new OutputFileResolver(props), clock)).isInstanceOf(BatchingSink.class);

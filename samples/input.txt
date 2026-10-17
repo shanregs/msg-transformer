@@ -1,7 +1,0 @@
-{"trade_ref":"T1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}
-{"trade_ref":"T2","trade_type":"PI","bmoLegalEntity":"LDN-02","counterpartyId":"CP2","group_cd":"G1","delegated":"N"}
-
-{"trade_ref":"T3","trade_type":"RP","bmoLegalEntity":"BMOCM01","counterpartyId":"CP3","group_cd":"G2","delegated":"Y","cparty_branch_cd":"GB"}
-this line is not json
-["not","an","object"]
-{"trade_ref":"T6","trade_type":"CLD","bmoLegalEntity":"BMOCM01","counterpartyId":"CP6","group_cd":"G2"}

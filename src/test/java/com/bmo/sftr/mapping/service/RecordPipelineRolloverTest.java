@@ -1,6 +1,7 @@
 package com.bmo.sftr.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -57,22 +58,21 @@ class RecordPipelineRolloverTest {
     }
 
     @Test
-    void rowsAndRejectsMoveToANewFileAtMidnightInKolkata() throws Exception {
+    void rowsMoveToANewFileAtMidnightInKolkata() throws Exception {
         RefDataClient refData = mock(RefDataClient.class);
         when(refData.fetch(any())).thenReturn(REF);
         RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
-        OutputProperties props = new OutputProperties(dir.resolve("report.csv").toString(), null, null,
+        OutputProperties props = new OutputProperties(dir.resolve("report.csv").toString(), null,
                 Rollover.DAILY, KOLKATA, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000);
         // 18:29 UTC is 23:59 on 16 Oct in Kolkata; 18:31 UTC is 00:01 on 17 Oct
         MovableClock clock = new MovableClock("2026-10-16T18:29:00Z");
         RecordPipeline p = new RecordPipeline(refData, processor, TestSupport.csvWriter(),
                 TestSupport.realConstants(), TestSupport.MAPPER, props, clock);
 
-        p.handle(msg("1"), "t-0@0");
-        p.handle("{not json", "t-0@1");
+        p.handle(msg("1"), "t:1");
+        assertThatThrownBy(() -> p.handle("{not json", "t:2")).isInstanceOf(RecordProcessingException.class);
         clock.set("2026-10-16T18:31:00Z");
-        p.handle(msg("2"), "t-0@2");
-        p.handle("", "t-0@3");
+        p.handle(msg("2"), "t:3");
         p.close();
 
         Path day1 = dir.resolve("report-2026-10-16.csv");
@@ -80,10 +80,7 @@ class RecordPipelineRolloverTest {
         assertThat(Files.readAllLines(day1)).hasSize(2);
         assertThat(Files.readAllLines(day2)).hasSize(2);
         assertThat(Files.readAllLines(day2).get(0)).startsWith("IM_SubmitterID,");
-        assertThat(Files.readAllLines(dir.resolve("report-2026-10-16.csv.rejects"))).containsExactly("t-0@1\tMalformed JSON");
-        List<String> day2Rejects = Files.readAllLines(dir.resolve("report-2026-10-17.csv.rejects"));
-        assertThat(day2Rejects).hasSize(1);
-        assertThat(day2Rejects.get(0)).startsWith("t-0@3\t");
         assertThat(dir.resolve("report.csv")).doesNotExist();
+        assertThat(dir.resolve("report-2026-10-16.csv.rejects")).doesNotExist();
     }
 }

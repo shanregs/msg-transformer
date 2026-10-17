@@ -13,12 +13,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-/** Full application context (Kafka consumer not started) and a byte-for-byte comparison of the output. */
-@SpringBootTest(properties = {"sftr.kafka.enabled=false", "sftr.output.file-date=2026-01-01"})
+/** Full application context (H2 database) and a byte-for-byte comparison of the output. */
+@SpringBootTest(properties = {"sftr.output.file-date=2026-01-01", "sftr.output.write-mode=PER_RECORD"})
+@ActiveProfiles("test")
 class GoldenFileTest {
 
     private static Path outDir;
@@ -41,7 +43,7 @@ class GoldenFileTest {
                  "find_sftr_party_sector":{"values":{"natureOfReportingCounterparty":"C","sector":"CDTI"}}}"""));
 
         String line = Files.readString(new ClassPathResource("golden/input.jsonl").getFile().toPath()).strip();
-        pipeline.handle(line, "trade-messages-0@0");
+        pipeline.handle(line, "trade:1");
 
         byte[] expected = new ClassPathResource("golden/expected.csv").getContentAsByteArray();
         assertThat(Files.readAllBytes(outDir.resolve("out-2026-01-01.csv"))).isEqualTo(expected);

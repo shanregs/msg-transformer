@@ -25,7 +25,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -72,7 +72,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -119,7 +119,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -166,7 +166,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -213,7 +213,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -260,7 +260,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -307,7 +307,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -346,7 +346,7 @@
       ]
     },
     {
-      "name": "B. Rejected messages",
+      "name": "B. Messages that fail",
       "item": [
         {
           "name": "B1 malformed JSON",
@@ -358,8 +358,8 @@
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
-                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
-                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('outcome is FAILED', function () { pm.expect(r.outcome).to.eql('FAILED'); });",
+                  "pm.test('a reason is given', function () { pm.expect(r.reason).to.be.a('string'); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -367,7 +367,7 @@
           ],
           "request": {
             "method": "POST",
-            "description": "HTTP 200 with outcome REJECTED. The rejects file gets: rest-<n> TAB Malformed JSON.",
+            "description": "HTTP 200 with outcome FAILED and reason Malformed JSON. Nothing is written.",
             "header": [
               {
                 "key": "Content-Type",
@@ -405,8 +405,8 @@
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
-                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
-                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('outcome is FAILED', function () { pm.expect(r.outcome).to.eql('FAILED'); });",
+                  "pm.test('a reason is given', function () { pm.expect(r.reason).to.be.a('string'); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -414,7 +414,7 @@
           ],
           "request": {
             "method": "POST",
-            "description": "The rejects file gets: rest-<n> TAB Empty message.",
+            "description": "HTTP 200 with outcome FAILED and reason Empty message.",
             "header": [
               {
                 "key": "Content-Type",
@@ -452,8 +452,8 @@
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
-                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
-                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('outcome is FAILED', function () { pm.expect(r.outcome).to.eql('FAILED'); });",
+                  "pm.test('a reason is given', function () { pm.expect(r.reason).to.be.a('string'); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -461,7 +461,7 @@
           ],
           "request": {
             "method": "POST",
-            "description": "The rejects file gets: rest-<n> TAB Not a JSON object.",
+            "description": "HTTP 200 with outcome FAILED and reason Not a JSON object.",
             "header": [
               {
                 "key": "Content-Type",
@@ -504,8 +504,8 @@
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
-                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
-                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('outcome is FAILED', function () { pm.expect(r.outcome).to.eql('FAILED'); });",
+                  "pm.test('a reason is given', function () { pm.expect(r.reason).to.be.a('string'); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -513,7 +513,7 @@
           ],
           "request": {
             "method": "POST",
-            "description": "A 4xx is never retried. The rejects file gets: Reference data HTTP 400. Needs the stub (samples/refdata-stub.py).",
+            "description": "A 4xx is never retried. Outcome FAILED, reason Reference data HTTP 400. Needs the stub (samples/refdata-stub.py).",
             "header": [
               {
                 "key": "Content-Type",
@@ -551,8 +551,8 @@
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
-                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
-                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('outcome is FAILED', function () { pm.expect(r.outcome).to.eql('FAILED'); });",
+                  "pm.test('a reason is given', function () { pm.expect(r.reason).to.be.a('string'); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -560,7 +560,7 @@
           ],
           "request": {
             "method": "POST",
-            "description": "A 5xx is retried (3 attempts, short backoff, under a second) and then rejected: Reference data unavailable.",
+            "description": "A 5xx is retried (3 attempts, short backoff, under a second) and then fails: outcome FAILED, reason Reference data unavailable.",
             "header": [
               {
                 "key": "Content-Type",
@@ -598,8 +598,8 @@
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
-                  "pm.test('outcome is REJECTED', function () { pm.expect(r.outcome).to.eql('REJECTED'); });",
-                  "pm.test('rejects file is named', function () { pm.expect(r.rejectsFile).to.be.a('string').and.to.include('.rejects'); });",
+                  "pm.test('outcome is FAILED', function () { pm.expect(r.outcome).to.eql('FAILED'); });",
+                  "pm.test('a reason is given', function () { pm.expect(r.reason).to.be.a('string'); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
               }
@@ -651,7 +651,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
@@ -705,7 +705,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
@@ -759,7 +759,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
@@ -813,7 +813,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('flushed is false', function () { pm.expect(r.flushed).to.eql(false); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]
@@ -867,7 +867,7 @@
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.test('outcome is WRITTEN', function () { pm.expect(r.outcome).to.eql('WRITTEN'); });",
-                  "pm.test('no rejects file', function () { pm.expect(r.rejectsFile).to.eql(null); });",
+                  "pm.test('no failure reason', function () { pm.expect(r.reason).to.eql(null); });",
                   "pm.test('flushed is true', function () { pm.expect(r.flushed).to.eql(true); });",
                   "pm.test('report file is named', function () { pm.expect(r.reportFile).to.include('sftr-report'); });"
                 ]

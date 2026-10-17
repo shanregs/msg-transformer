@@ -47,10 +47,9 @@ class OutputPropertiesTest {
     }
 
     @Test
-    void rejectsFileAndFileDateAreOptional() {
-        OutputProperties p = bind("sftr.output.file-date", "2026-01-01", "sftr.output.rejects-file", "./r.txt");
+    void fileDateIsOptional() {
+        OutputProperties p = bind("sftr.output.file-date", "2026-01-01");
         assertThat(p.fileDate()).isEqualTo("2026-01-01");
-        assertThat(p.rejectsFile()).isEqualTo("./r.txt");
     }
 
     @Test
@@ -67,7 +66,7 @@ class OutputPropertiesTest {
 
     @Test
     void fileIsRequired() {
-        assertThatThrownBy(() -> new OutputProperties(" ", null, null, null, null, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000))
+        assertThatThrownBy(() -> new OutputProperties(" ", null, null, null, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("sftr.output.file is required");
     }

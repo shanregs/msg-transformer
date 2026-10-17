@@ -28,7 +28,7 @@ class PerRecordSinkTest {
     Path dir;
 
     static OutputProperties props(Path file, Rollover rollover, WriteMode mode) {
-        return new OutputProperties(file.toString(), null, null, rollover, ZoneId.of("Asia/Kolkata"), mode, 10,
+        return new OutputProperties(file.toString(), null, rollover, ZoneId.of("Asia/Kolkata"), mode, 10,
                 Duration.ofMinutes(5), 1000);
     }
 

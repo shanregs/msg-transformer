@@ -1,67 +1,63 @@
 # SFTR Mapping Engine: C4 Architecture Diagrams
 
-Diagrams are Mermaid, so they render on GitHub and in most IDEs. See [code-flow-and-classes.md](code-flow-and-classes.md) for the written walkthrough and [design-camel-batch-writer.md](design-camel-batch-writer.md) for why it is built this way.
+Diagrams are Mermaid, so they render on GitHub and in most IDEs. See [code-flow-and-classes.md](code-flow-and-classes.md) for the written walkthrough and [design-and-architecture.md](design-and-architecture.md) for why it is built this way.
 
 ## Level 1: System context
 
-The engine takes messages from Kafka or an input file, asks the Reference Data Service to enrich each one, and writes the SFTR CSV plus a rejects file for each day. Kafka offsets are handled by the Camel consumer defaults. One source is used per run; Kafka is the default and the `file` profile switches it off. A separate `publisher` mode of the same application sends generated messages to Kafka for testing.
+The engine reads trades from a database table that another application fills, asks the Reference Data Service to enrich each one, and writes the SFTR CSV for each day. An operator starts a run with one REST call. Failed trades are logged; there is no rejects file.
 
 ```mermaid
 flowchart LR
-    op(["Operator<br/>runs the app"]) -->|starts and configures| engine
-    op -->|optional: POST /api/test-message, rest or both profile| engine
-    op -->|optional: publisher profile, rate or count or duration| engine
-    op -->|optional: POST /api/kafka-message, rest or both profile| engine
-    engine -.->|publisher mode and /api/kafka-message: test messages| kafka
-    kafka[("Kafka broker<br/>topic trade-messages")] -->|messages| engine
-    file["Input file<br/>.txt JSON lines or .csv"] -->|messages| engine
-    engine["<b>SFTR Mapping Engine</b><br/>Spring Boot + Apache Camel<br/>maps messages to rows"] <-->|enrich| ref["Reference Data Service<br/>HTTP, JSON"]
-    engine -->|rows| out["Output files<br/>daily SFTR CSV and .rejects"]
+    op(["Operator<br/>Swagger UI, curl or Postman"]) -->|"POST /api/trades/process"| engine
+    other["Trade-capture application<br/>writes the trade table"] -->|"rows: id, created_by, created_on,<br/>event, data_json"| db[("PostgreSQL<br/>database sftr")]
+    db -->|"RECEIVED rows, read only"| engine
+    engine["<b>SFTR Mapping Engine</b><br/>Spring Boot<br/>maps trades to rows"] <-->|enrich| ref["Reference Data Service<br/>HTTP, JSON"]
+    engine -->|rows| out["Output file<br/>daily SFTR CSV"]
+    engine -.->|failed trades| log["Application log"]
 
     style engine fill:#dbeafe,stroke:#2563eb,stroke-width:2px
 ```
 
 ## Level 2: Containers
 
-One Spring Boot application (`sftr-mapping-engine.jar`) with one Camel Kafka consumer, defined in a YAML route. It reads its mapping config once at startup, then handles messages one at a time. The same jar can run as a message publisher (`publisher` profile).
+One Spring Boot application (`sftr-mapping-engine.jar`) with a web server on port 9090. It reads its mapping config once at startup, then handles one run at a time.
 
 ```mermaid
 flowchart LR
-    kafka[("Kafka broker<br/>topic trade-messages")] -->|messages| engine
-    file["Input file<br/>.txt JSON lines or .csv"] -->|messages| engine
-    cfg["Config<br/>mapper/sftr-field-mappings.json<br/>routes/kafka-ingest.camel.yaml<br/>application.yml<br/>write-mode, batch-size, batch-interval,<br/>rollover, file-zone, publisher settings"] -.->|loaded at startup| engine
-    engine["<b>SFTR Mapping Engine</b><br/>Spring Boot application<br/>Camel YAML route, one consumer<br/>maps each message to a row<br/>writes per record or in batches<br/>one file per day<br/>optional publisher mode"]
+    op(["Operator"]) -->|"REST + Swagger UI"| engine
+    db[("PostgreSQL<br/>table trade")] -->|"JDBC, read only"| engine
+    cfg["Config<br/>mapper/sftr-field-mappings.json<br/>application.yml<br/>database, write-mode, batch-size,<br/>rollover, file-zone"] -.->|loaded at startup| engine
+    engine["<b>SFTR Mapping Engine</b><br/>Spring Boot application<br/>reads RECEIVED trades in id order<br/>maps each to a row<br/>writes in batches, one file per day"]
     engine <-->|enrich| ref["Reference data<br/>HTTP service, JSON"]
     engine -->|rows| csv["SFTR CSV report<br/>sftr-report-yyyy-mm-dd.csv"]
-    engine -->|rejects| rej["Rejects file<br/>source and reason, per day"]
 
     style engine fill:#dbeafe,stroke:#2563eb,stroke-width:2px
 ```
 
 ## Level 3: Components
 
-Solid arrows run per message; dashed arrows run at startup, on the timer, or by configuration.
+Solid arrows run per record; dashed arrows run at startup, on the timer, or by configuration.
 
 ```mermaid
 flowchart TB
     subgraph engine["SFTR Mapping Engine (Spring Boot application)"]
-        route["routes/kafka-ingest.camel.yaml<br/>Camel YAML route, one consumer<br/>autoStartup = sftr.kafka.enabled"]
-        handler["KafkaMessageHandler<br/>the route's bean<br/>headers to source ref, calls the pipeline"]
-        legacy["KafkaRecordListener<br/>previous listener<br/>PER_RECORD only"]
-        file["FileInputRunner<br/>reads .txt or .csv lines<br/>flushes at end of file"]
-        rest["TestMessageController<br/>POST /api/test-message<br/>rest or both profile"]
-        kpub["KafkaPublishController<br/>POST /api/kafka-message<br/>KafkaTemplate, rest or both profile"]
-        pipe["<b>RecordPipeline</b><br/>one message at a time<br/>day, transform, append or reject<br/>runs the durable callback"]
-        day["ReportDay<br/>one clock reading per message<br/>midnight in Asia/Kolkata"]
+        tc["TradeController<br/>POST /api/trades/process<br/>Swagger annotated"]
+        mc["TestMessageController<br/>POST /api/test-message"]
+        fetch["<b>TradeFetchService</b><br/>pages through RECEIVED rows<br/>counts, logs failures, flushes<br/>one run at a time"]
+        repo["TradeRepository<br/>Spring Data JPA, read only<br/>keyset query: id greater than last, limit"]
+        ent["Trade (entity)<br/>id, created_by, created_on,<br/>event, data_json"]
+        dbp["DbProperties<br/>event, page-size"]
+        seed["TradeSeeder<br/>seed profile only<br/>10 sample rows if the table is empty"]
+        pipe["<b>RecordPipeline</b><br/>one record at a time<br/>day, transform, append<br/>throws RecordProcessingException"]
+        day["ReportDay<br/>one clock reading per record<br/>midnight in Asia/Kolkata"]
         tf["MessageTransformer<br/>parse, enrich, map"]
         ref["RefDataClient<br/>HTTP POST with retries"]
         proc["RecordProcessor<br/>runs the active mappings"]
-        sink{{"ReportSink<br/>append, whenDurable, flush, close"}}
-        per["PerRecordSink<br/>open, write, close per message"]
+        sink{{"ReportSink<br/>append, flush, close"}}
+        per["PerRecordSink<br/>open, write, close per record"]
         batch["BatchingSink<br/>buffer + lock<br/>flush by count, age, day change, midnight"]
         timer["Flusher<br/>one virtual thread<br/>deadline timer"]
-        rej["RejectWriter<br/>appends to the day's rejects file"]
-        csv["SftrCsvWriter<br/>openAppend, write rows"]
+        csv["SftrCsvWriter<br/>openAppend, write rows<br/>knows the columns"]
         files["OutputFileResolver<br/>daily file names"]
         props["OutputProperties<br/>write-mode, batch-size, batch-interval,<br/>rollover, file-zone, validated at startup"]
         loader["MappingConfigLoader<br/>reads and validates JSON<br/>compiles each row"]
@@ -69,24 +65,21 @@ flowchart TB
         fns["SftrMappingFunctions<br/>named business lambdas<br/>+ RefDataExtractors, DateHelpers"]
         cols["OutputColumns<br/>one constant per output column<br/>lambdas register against these"]
         consts["SftrConstants<br/>values, lists, lookups"]
-        ptimer["MessagePublisherRoute<br/>timer to Kafka<br/>publisher profile only"]
-        pub["MessagePublisher<br/>next: build message<br/>afterSend: count, apply limits, exit"]
-        gen["TradeMessageGenerator<br/>message n from the configured lists"]
-        pprops["PublisherProperties<br/>rate-per-minute, max-messages,<br/>duration, validated at startup"]
-        pub_topic(["Kafka topic<br/>(outside the engine)"])
+        api["OpenApiConfig + springdoc<br/>/swagger-ui.html, /v3/api-docs"]
 
-        route -->|bean step| handler
-        handler -->|handle| pipe
-        legacy -->|handle| pipe
-        file -->|handle| pipe
-        rest -->|handle, then flush| pipe
+        tc --> fetch
+        fetch --> repo
+        repo --> ent
+        dbp -.->|event, page size| fetch
+        seed -.->|persist at start-up| ent
+        fetch -->|"data_json, trade:id"| pipe
+        mc -->|"body, rest-n"| pipe
         pipe -->|today| day
         pipe -->|transform| tf
         tf -->|fetch| ref
         tf -->|process| proc
         consts -->|context| proc
         pipe -->|row| sink
-        pipe -->|reject| rej
         sink -.-> per
         sink -.-> batch
         timer -.->|flush when due| batch
@@ -94,28 +87,26 @@ flowchart TB
         batch --> csv
         files -.->|file for the day| per
         files -.->|file for the day| batch
-        files -.->|file for the day| rej
         props -.->|selects sink and limits| sink
         loader -.->|compiled once| cfgbean
         cfgbean -.->|active mappings| proc
         cfgbean -.->|columns, CSV order| csv
         fns -.->|find by name| loader
         cols -.->|names used for registration| fns
-        kpub -.->|publish to the topic, outside the engine| pub_topic
-        ptimer -->|each tick| pub
-        pub -->|message n| gen
-        pprops -.->|limits and period| ptimer
-        pprops -.->|limits| pub
+        api -.->|documents| tc
+        api -.->|documents| mc
     end
+    pg[("PostgreSQL")] --> repo
 
     style pipe fill:#dbeafe,stroke:#2563eb,stroke-width:2px
+    style fetch fill:#dbeafe,stroke:#2563eb,stroke-width:2px
 ```
 
 ## Level 4: Code
 
 ### Config compilation (startup)
 
-At startup `MappingConfigLoader.load()` turns every `FieldMapping` into a `Column`, and every active one also into a `CompiledMapping` that wraps a `MappingFunction`. `MappingConfiguration` exposes the result as one `CompiledConfig` bean. `RecordProcessor` takes the active mappings from it and, for each message, creates an `SftrTransactionReport` and fills it by running the compiled mappings. `SftrCsvWriter` takes the `Column` list from the same bean, so the sinks never need the rules engine; `Column.read` pulls the values back out when the CSV row is written.
+At startup `MappingConfigLoader.load()` turns every `FieldMapping` into a `Column`, and every active one also into a `CompiledMapping` that wraps a `MappingFunction`. `MappingConfiguration` exposes the result as one `CompiledConfig` bean. `RecordProcessor` takes the active mappings from it and, for each record, creates an `SftrTransactionReport` and fills it by running the compiled mappings. `SftrCsvWriter` takes the `Column` list from the same bean, so the sinks never need the rules engine; `Column.read` pulls the values back out when the CSV row is written.
 
 ```mermaid
 classDiagram
@@ -130,13 +121,13 @@ classDiagram
         load() CompiledConfig
         compile(row, field)
     }
-    class RecordProcessor {
-        <<component>>
-        process(message, ctx)
-    }
     class MappingConfiguration {
         <<configuration>>
         compiledConfig(loader) CompiledConfig
+    }
+    class RecordProcessor {
+        <<component>>
+        process(message, ctx)
     }
     class CompiledConfig {
         <<record>>
@@ -170,16 +161,71 @@ classDiagram
     CompiledConfig o-- CompiledMapping : active
     CompiledConfig o-- Column : columns
     CompiledMapping --> MappingFunction : fn
-    RecordProcessor ..> SftrTransactionReport : creates per message
+    RecordProcessor ..> SftrTransactionReport : creates per record
     Column ..> SftrTransactionReport : reads its field
 ```
 
-### Output (per message)
+### Database input
+
+```mermaid
+classDiagram
+    class TradeController {
+        <<RestController>>
+        process(limit) ResponseEntity
+    }
+    class TradeFetchService {
+        <<service>>
+        process(limit) Summary
+        one run at a time
+    }
+    class TradeRepository {
+        <<Spring Data, read only>>
+        findByEventAndIdGreaterThanOrderByIdAsc(event, afterId, limit) List
+    }
+    class Trade {
+        <<entity, immutable>>
+        id, createdBy, createdOn
+        event, dataJson
+    }
+    class TradeEvent {
+        <<enum>>
+        RECEIVED
+        PROCESSED
+        PUBLISHED
+    }
+    class DbProperties {
+        <<record>>
+        event, pageSize
+    }
+    class TradeSeeder {
+        <<ApplicationRunner, seed profile>>
+        run(args)
+    }
+    class RecordPipeline {
+        handle(json, sourceRef)
+        flush()
+    }
+    class RecordProcessingException {
+        sourceRef()
+        short reason, no content
+    }
+
+    TradeController ..> TradeFetchService
+    TradeFetchService ..> TradeRepository
+    TradeFetchService ..> DbProperties
+    TradeSeeder ..> Trade : inserts when the table is empty
+    TradeFetchService ..> RecordPipeline
+    TradeRepository ..> Trade
+    Trade --> TradeEvent
+    RecordPipeline ..> RecordProcessingException : throws
+```
+
+### Output
 
 ```mermaid
 classDiagram
     class RecordPipeline {
-        handle(json, sourceRef, whenDurable) Outcome
+        handle(json, sourceRef)
         flush()
     }
     class MessageTransformer {
@@ -187,8 +233,7 @@ classDiagram
     }
     class ReportSink {
         <<interface>>
-        append(row, day, whenDurable)
-        whenDurable(action)
+        append(row, day)
         flush()
         close()
     }
@@ -196,31 +241,22 @@ classDiagram
         open, write, close per row
     }
     class BatchingSink {
-        buffer, pending callbacks, lock
+        buffer, lock
         flushIfDue()
         retry after failed write
     }
-    class RejectWriter {
-        write(sourceRef, summary, day)
-        summarize(error)
-    }
     class OutputFileResolver {
         report(day) Path
-        rejects(day) Path
     }
     class ReportDay {
         today() LocalDate
     }
     class OutputProperties {
         <<record>>
-        file, rejectsFile, fileDate
+        file, fileDate
         rollover, fileZone
         writeMode, batchSize
         batchInterval, maxBufferedRecords
-    }
-    class KafkaMessageHandler {
-        <<bean called by the YAML route>>
-        handle(exchange)
     }
     class SftrCsvWriter {
         columns from CompiledConfig
@@ -231,67 +267,26 @@ classDiagram
     ReportSink <|.. BatchingSink
     RecordPipeline ..> MessageTransformer
     RecordPipeline ..> ReportSink
-    RecordPipeline ..> RejectWriter
     RecordPipeline ..> ReportDay
     PerRecordSink ..> SftrCsvWriter
     BatchingSink ..> SftrCsvWriter
     PerRecordSink ..> OutputFileResolver
     BatchingSink ..> OutputFileResolver
-    RejectWriter ..> OutputFileResolver
     OutputFileResolver ..> OutputProperties
     ReportDay ..> OutputProperties
-    KafkaMessageHandler ..> RecordPipeline
 ```
 
-### REST endpoints
+### REST endpoints and column names
 
 ```mermaid
 classDiagram
+    class TradeController {
+        <<RestController>>
+        process(limit)
+    }
     class TestMessageController {
         <<RestController>>
         post(body, flush) Result
-    }
-    class KafkaPublishController {
-        <<RestController>>
-        publish(body, topic, key) ResponseEntity
-    }
-    class KafkaTemplate {
-        <<Spring Kafka>>
-        send(topic, key, value) Future
-    }
-    class RecordPipeline {
-        handle(json, sourceRef, whenDurable)
-    }
-
-    TestMessageController ..> RecordPipeline : runs the flow directly
-    KafkaPublishController ..> KafkaTemplate : sends, waits for the acknowledgement
-```
-
-### Publisher and column names
-
-```mermaid
-classDiagram
-    class MessagePublisherRoute {
-        <<RouteBuilder>>
-        timer period = 60000 / rate
-        configure()
-    }
-    class MessagePublisher {
-        <<component>>
-        next(exchange)
-        afterSend(exchange)
-        sent() long
-        finish() once
-    }
-    class TradeMessageGenerator {
-        message(n) String
-    }
-    class PublisherProperties {
-        <<record>>
-        enabled, topic, ratePerMinute
-        maxMessages, duration
-        tradeTypes, legalEntities, counterpartyIds
-        periodMillis()
     }
     class OutputColumns {
         <<constants>>
@@ -304,26 +299,60 @@ classDiagram
         register(OutputColumns constant, fn)
     }
 
-    MessagePublisherRoute ..> MessagePublisher : bean steps
-    MessagePublisherRoute ..> PublisherProperties : period
-    MessagePublisher ..> TradeMessageGenerator
-    MessagePublisher ..> PublisherProperties : limits
-    TradeMessageGenerator ..> PublisherProperties : value lists
     SftrMappingFunctions ..> OutputColumns : registers by constant
+    TradeController ..> TradeFetchService : whole table
+    TestMessageController ..> RecordPipeline : one message
 ```
 
-## Dynamic view 1: `PER_RECORD`, one message
+## Dynamic view 1: a table run in `COUNT` mode
+
+Batch size 3 for the picture (the default is 100). Rows 1 to 3 fill the batch and are written together. Rows 4 and 5 fail and are logged. The final flush finds nothing waiting.
 
 ```mermaid
 sequenceDiagram
-    participant In as KafkaMessageHandler
+    participant U as Caller
+    participant TC as TradeController
+    participant S as TradeFetchService
+    participant R as TradeRepository
+    participant P as RecordPipeline
+    participant K as BatchingSink
+    participant F as CSV file
+
+    U->>TC: POST /api/trades/process
+    TC->>S: process(null)
+    S->>R: RECEIVED, id greater than lowest, page size
+    R-->>S: rows 1, 2, 3, 4, 5
+    S->>P: handle(json of row 1, trade:1)
+    P->>K: append(row)
+    S->>P: handle(row 2)
+    P->>K: append(row)
+    S->>P: handle(row 3)
+    P->>K: append(row)
+    Note over K: batch-size 3 reached
+    K->>F: open, write 3 rows, close
+    S->>P: handle(row 4)
+    P-->>S: RecordProcessingException (Reference data HTTP 400)
+    Note over S: log: Trade 4 failed, continue
+    S->>P: handle(row 5)
+    P-->>S: RecordProcessingException (Not a JSON object)
+    S->>P: flush()
+    P->>K: flush() (nothing waiting)
+    S-->>TC: Summary(read 5, written 3, failed 2)
+    TC-->>U: 200 + JSON
+```
+
+## Dynamic view 2: `PER_RECORD`, one record
+
+```mermaid
+sequenceDiagram
+    participant In as TradeFetchService
     participant P as RecordPipeline
     participant T as MessageTransformer
     participant R as RefDataClient
     participant M as RecordProcessor
     participant S as PerRecordSink
 
-    In->>P: handle(json, ref)
+    In->>P: handle(json, trade:42)
     P->>T: transform(json, day)
     T->>R: fetch(message)
     R-->>T: ref data JSON
@@ -334,125 +363,47 @@ sequenceDiagram
     S->>S: open file, write, close
 ```
 
-## Dynamic view 2: `COUNT` mode, batch of 3
+## Dynamic view 3: paging through the table
 
-The first two rows wait in the buffer. The third completes the batch and all three are written together. Kafka offsets are not part of this: the Kafka client commits them on its own schedule, so a crash while rows wait can lose them (see the design document, section 9).
+Page size 2, `RECEIVED` rows with ids 1, 3, 4, 6, 9. The other application inserts id 10 while the run is busy with the second page, so the third query already sees it.
 
 ```mermaid
 sequenceDiagram
-    participant K as Kafka
-    participant R as KafkaMessageHandler
-    participant P as RecordPipeline
-    participant S as BatchingSink
-    participant F as CSV file
+    participant S as TradeFetchService
+    participant R as TradeRepository
+    participant DB as trade table
 
-    K->>R: message, offset 10
-    R->>P: handle
-    P->>S: append(row 10)
-    K->>R: message, offset 11
-    R->>P: handle
-    P->>S: append(row 11)
-    K->>R: message, offset 12
-    R->>P: handle
-    P->>S: append(row 12)
-    Note over S: buffer reached batch-size 3
-    S->>F: open, write 3 rows, close
-    Note over K,R: the Kafka client auto-commits offsets,<br/>independently of the write
+    S->>R: after = lowest id, limit 2
+    R->>DB: event = RECEIVED and id greater than after, order by id, limit 2
+    DB-->>S: ids 1, 3
+    Note over S: process 1, 3; after = 3
+    S->>R: after = 3, limit 2
+    DB-->>S: ids 4, 6
+    Note over S: process 4, 6; after = 6
+    S->>R: after = 6, limit 2
+    DB-->>S: id 9 (and 10, inserted meanwhile)
+    Note over S: a full page of two: process 9, 10; after = 10
+    S->>R: after = 10, limit 2
+    DB-->>S: no rows
+    Note over S: empty page: end of the run, flush
 ```
 
-## Dynamic view 3: `INTERVAL` mode with a rejected message
+## Dynamic view 4: `INTERVAL` mode
 
-The rejected message goes to the rejects file at once. The good rows wait until the batch interval has passed; the timer thread then writes them.
+The timer thread writes the CSV when the oldest waiting row is old enough, even if no more rows arrive. In a table run the end-of-run flush usually writes the batch first.
 
 ```mermaid
 sequenceDiagram
-    participant R as KafkaMessageHandler
-    participant S as BatchingSink
-    participant J as RejectWriter
+    participant S as TradeFetchService
+    participant K as BatchingSink
     participant X as Flusher (timer)
     participant F as CSV file
 
-    R->>S: append(row, offset 5)
-    Note over S,X: buffer was empty, timer starts
-    R->>S: append(row, offset 6)
-    R->>J: write rejects line for offset 7
-    X->>S: batch-interval elapsed, flush
-    S->>F: open, write rows 5 and 6, close
-```
-
-## Dynamic view 4: publisher run
-
-`rate-per-minute: 60`, `max-messages: 3`. Each tick is one pass through the route. The third message reaches the count, so the run finishes and the application exits.
-
-```mermaid
-sequenceDiagram
-    participant T as Camel timer
-    participant M as MessagePublisher
-    participant G as TradeMessageGenerator
-    participant K as Kafka topic
-    participant D as deadline timer
-    participant A as Spring context
-
-    T->>M: next (tick 1)
-    Note over M: first message: start time set,<br/>deadline timer started if duration is set
-    M->>G: message(1)
-    G-->>M: JSON
-    T->>K: send
-    T->>M: afterSend (count 1)
-    T->>M: next (tick 2)
-    M->>G: message(2)
-    T->>K: send
-    T->>M: afterSend (count 2)
-    T->>M: next (tick 3)
-    M->>G: message(3)
-    T->>K: send
-    T->>M: afterSend (count 3 = max-messages)
-    M->>M: finish() once, log summary
-    M->>A: exit on a new thread
-    Note over D,M: with duration set, the deadline timer<br/>calls finish() on time, even between ticks
-```
-
-## Dynamic view 5: REST to Kafka to CSV (`both` mode)
-
-`POST /api/kafka-message` only puts the message on the topic. The consumer then handles it exactly like a message from any producer.
-
-```mermaid
-sequenceDiagram
-    participant U as Caller (curl, Postman)
-    participant KP as KafkaPublishController
-    participant K as Kafka topic
-    participant R as YAML route + KafkaMessageHandler
-    participant P as RecordPipeline
-    participant F as CSV file
-
-    U->>KP: POST /api/kafka-message (body, topic?, key?)
-    KP->>K: send, wait for the acknowledgement
-    K-->>KP: partition, offset
-    KP-->>U: 200 {topic, partition, offset}
-    K->>R: message (consumer poll)
-    R->>P: handle(json, ref, whenDurable)
-    P->>F: row written (per the write mode)
-    Note over KP,U: no broker or no answer in time: 503<br/>empty body: 400
-```
-
-## Dynamic view 6: how the Kafka route starts
-
-```mermaid
-sequenceDiagram
-    participant S as Spring Boot
-    participant C as Camel context
-    participant Y as routes/kafka-ingest.camel.yaml
-    participant B as bean (KafkaMessageHandler)
-
-    S->>B: create KafkaMessageHandler
-    S->>C: start, routes-include-pattern classpath:routes/*.yaml
-    C->>Y: load route sftr-kafka-ingest
-    Y->>Y: resolve {{...}} placeholders from application.yml
-    alt sftr.kafka.enabled = true (kafka, both)
-        C->>C: autoStartup true: start the consumer
-    else false (rest, file, publisher)
-        C->>C: autoStartup false: route loaded, not started
-    end
+    S->>K: append(row 5)
+    Note over K,X: buffer was empty, timer starts
+    S->>K: append(row 6)
+    X->>K: batch-interval elapsed, flush
+    K->>F: open, write rows 5 and 6, close
 ```
 
 ## Decision view: when does a write happen?
@@ -466,25 +417,31 @@ flowchart TD
     B -->|COUNT| D["add to buffer"] --> E{"buffer size at least batch-size?"}
     B -->|INTERVAL| F["add to buffer<br/>start timer if buffer was empty"]
     E -->|yes| W["flush: write all rows, close"]
-    E -->|no| I["wait for next message"]
+    E -->|no| I["wait for next row"]
     F --> I
     T["Timer: oldest row is batch-interval old,<br/>or midnight in file-zone"] --> W
     M["Buffer reaches max-buffered-records"] --> W
-    S["Shutdown or end of input file"] --> W
+    S["End of the run (flush), or shutdown"] --> W
 ```
 
-## Decision view: when does the publisher stop?
+## Decision view: what happens to one row of the table?
 
 ```mermaid
 flowchart TD
-    A["Tick: next()"] --> B{"already finished?"}
-    B -->|yes| Z["stop this tick, send nothing"]
-    B -->|no| C{"duration set and<br/>deadline passed?"}
-    C -->|yes| F["finish: log summary, exit"]
-    C -->|no| D["build message, send"]
-    D --> E["afterSend: count + 1"]
-    E --> G{"max-messages set and<br/>count reached it?"}
-    G -->|yes| F
-    G -->|no| H["wait for the next tick"]
-    DL["deadline timer fires"] --> F
+    A["Row read from the trade table"] --> B{"data_json present and<br/>a JSON object?"}
+    B -->|no| X["failed: log id and reason<br/>(Empty message, Malformed JSON, Not a JSON object)"]
+    B -->|yes| C["Reference data call"]
+    C -->|"4xx"| X2["failed: Reference data HTTP code"]
+    C -->|"5xx or timeout,<br/>after all attempts"| X3["failed: Reference data unavailable"]
+    C -->|ok| D["run the mappings"]
+    D -->|"a rule throws"| X4["failed: Mapping failed for column X"]
+    D -->|row| E["append to the sink"]
+    E -->|"cannot be written"| X5["failed: could not be written<br/>(logged)"]
+    E -->|accepted| OK["written + 1"]
+    X --> NEXT["next row"]
+    X2 --> NEXT
+    X3 --> NEXT
+    X4 --> NEXT
+    X5 --> NEXT
+    OK --> NEXT
 ```

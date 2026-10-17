@@ -15,7 +15,6 @@ import com.bmo.sftr.mapping.output.OutputFileResolver;
 import com.bmo.sftr.mapping.output.OutputProperties;
 import com.bmo.sftr.mapping.output.OutputProperties.Rollover;
 import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
-import com.bmo.sftr.mapping.output.RejectWriter;
 import com.bmo.sftr.mapping.output.ReportDay;
 import com.bmo.sftr.mapping.output.ReportSinkConfig;
 import com.bmo.sftr.mapping.output.SftrCsvWriter;
@@ -47,7 +46,7 @@ class TestMessageControllerTest {
                 {"find_sftr_party":{"values":{"lei":"549300ABCDEFGHIJ0001"}},
                  "find_sftr_party_sector":{"values":{"natureOfReportingCounterparty":"C","sector":"CDTI"}}}"""));
         RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
-        OutputProperties props = new OutputProperties(dir.resolve("report.csv").toString(), null, "2026-10-16",
+        OutputProperties props = new OutputProperties(dir.resolve("report.csv").toString(), "2026-10-16",
                 Rollover.DAILY, KOLKATA, mode, 100, Duration.ofMinutes(30), 1000);
         Clock clock = Clock.system(KOLKATA);
         OutputFileResolver files = new OutputFileResolver(props);
@@ -55,7 +54,7 @@ class TestMessageControllerTest {
         ReportDay day = new ReportDay(props, clock);
         RecordPipeline pipeline = new RecordPipeline(
                 new MessageTransformer(refData, processor, TestSupport.realConstants(), TestSupport.MAPPER),
-                sink, new RejectWriter(files), day);
+                sink, day);
         return MockMvcBuilders.standaloneSetup(new TestMessageController(pipeline, day, files)).build();
     }
 
@@ -67,7 +66,7 @@ class TestMessageControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("WRITTEN"))
                 .andExpect(jsonPath("$.reportFile").value(org.hamcrest.Matchers.endsWith("report-2026-10-16.csv")))
-                .andExpect(jsonPath("$.rejectsFile").doesNotExist());
+                .andExpect(jsonPath("$.reason").doesNotExist());
 
         Path csv = dir.resolve("report-2026-10-16.csv");
         assertThat(Files.readAllLines(csv)).hasSize(2);
@@ -75,19 +74,20 @@ class TestMessageControllerTest {
     }
 
     @Test
-    void aBadMessageAnswers200WithRejectedAndTheRejectsFile() throws Exception {
-        mvc(WriteMode.PER_RECORD).perform(post("/api/test-message").contentType(MediaType.APPLICATION_JSON).content("{not json"))
+    void aBadMessageAnswers200WithFailedAndAShortReasonAndWritesNothing() throws Exception {
+        mvc(WriteMode.PER_RECORD).perform(post("/api/test-message").contentType(MediaType.APPLICATION_JSON).content("{not json SECRET"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.outcome").value("REJECTED"))
-                .andExpect(jsonPath("$.rejectsFile").value(org.hamcrest.Matchers.endsWith("report-2026-10-16.csv.rejects")));
+                .andExpect(jsonPath("$.outcome").value("FAILED"))
+                .andExpect(jsonPath("$.reason").value("Malformed JSON"));
 
-        assertThat(Files.readString(dir.resolve("report-2026-10-16.csv.rejects"))).isEqualTo("rest-1\tMalformed JSON\n");
+        assertThat(dir.resolve("report-2026-10-16.csv")).doesNotExist();
+        assertThat(dir.resolve("report-2026-10-16.csv.rejects")).doesNotExist();
     }
 
     @Test
-    void anEmptyBodyIsRejectedNotAnError() throws Exception {
+    void anEmptyBodyFailsTheMessageNotTheRequest() throws Exception {
         mvc(WriteMode.PER_RECORD).perform(post("/api/test-message")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.outcome").value("REJECTED"));
+                .andExpect(jsonPath("$.outcome").value("FAILED"));
     }
 
     @Test
