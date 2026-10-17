@@ -1,9 +1,7 @@
 package com.bmo.sftr.mapping.camel;
 
 import static com.bmo.sftr.mapping.camel.KafkaIngestTestSupport.BROKERS;
-import static com.bmo.sftr.mapping.camel.KafkaIngestTestSupport.awaitCommitted;
 import static com.bmo.sftr.mapping.camel.KafkaIngestTestSupport.awaitLines;
-import static com.bmo.sftr.mapping.camel.KafkaIngestTestSupport.committed;
 import static com.bmo.sftr.mapping.camel.KafkaIngestTestSupport.message;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,16 +54,13 @@ class CamelIntervalModeKafkaTest {
     }
 
     @Test
-    void theTimerWritesTheBatchAndTheNextMessageReleasesTheOffsets() throws Exception {
+    void theTimerWritesTheBatch() throws Exception {
         Path out = dir.resolve("report.csv");
 
         KafkaIngestTestSupport.send(TOPIC, message(1), message(2));
         assertThat(awaitLines(out, 3, 30_000)).as("header and two rows, written by the timer").isTrue();
-        Thread.sleep(2_000);
-        assertThat(committed(GROUP, TOPIC)).as("flusher thread cannot commit").isEqualTo(-1);
 
-        KafkaIngestTestSupport.send(TOPIC, message(3));              // next message: consumer thread commits 1 and 2
-        assertThat(awaitCommitted(GROUP, TOPIC, 2, 20_000)).isEqualTo(2);
+        KafkaIngestTestSupport.send(TOPIC, message(3));
         assertThat(awaitLines(out, 4, 30_000)).as("third row written by the next timer").isTrue();
     }
 }

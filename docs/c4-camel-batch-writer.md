@@ -1,6 +1,6 @@
 # C4 Diagrams: Camel route and configurable CSV write modes
 
-> **Historical.** `KafkaIngestRoute` in these diagrams is now the YAML route `routes/kafka-ingest.camel.yaml` with the bean `KafkaMessageHandler` and the process `OffsetCommitProcessor`. Current diagrams: [c4-architecture.md](c4-architecture.md).
+> **Historical.** `KafkaIngestRoute` in these diagrams is now the YAML route `routes/kafka-ingest.camel.yaml` with the bean `KafkaMessageHandler` and the process `OffsetCommitProcessor`. Current diagrams: [c4-architecture.md](c4-architecture.md). The manual offset commit it describes (commit only after the rows are on disk, with OffsetCommitter) was later removed: the Kafka route now uses the default offset handling.
 
 Target design for branch `camel-batch-writer`. Written design: [design-camel-batch-writer.md](design-camel-batch-writer.md). Diagrams are Mermaid.
 

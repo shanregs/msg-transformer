@@ -3,15 +3,12 @@ package com.bmo.sftr.mapping.camel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.TopicPartition;
 
 /** Helpers for the tests that need a real broker on localhost:19092 (run with -Dkafka.it=true). */
 final class KafkaIngestTestSupport {
@@ -36,28 +33,6 @@ final class KafkaIngestTestSupport {
         try (KafkaProducer<String, String> prod = new KafkaProducer<>(p)) {
             for (String v : values) prod.send(new ProducerRecord<>(topic, v)).get();
         }
-    }
-
-    /** The committed offset of the group on partition 0, or -1 if nothing is committed. */
-    static long committed(String group, String topic) throws Exception {
-        Properties p = new Properties();
-        p.put("bootstrap.servers", BROKERS);
-        try (AdminClient ac = AdminClient.create(p)) {
-            Map<TopicPartition, OffsetAndMetadata> m =
-                    ac.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get(10, TimeUnit.SECONDS);
-            OffsetAndMetadata o = m.get(new TopicPartition(topic, 0));
-            return o == null ? -1 : o.offset();
-        }
-    }
-
-    static long awaitCommitted(String group, String topic, long expected, long maxMs) throws Exception {
-        long end = System.currentTimeMillis() + maxMs;
-        long last = committed(group, topic);
-        while (last != expected && System.currentTimeMillis() < end) {
-            Thread.sleep(250);
-            last = committed(group, topic);
-        }
-        return last;
     }
 
     static boolean awaitLines(Path file, int lines, long maxMs) throws Exception {

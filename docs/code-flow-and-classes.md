@@ -36,9 +36,9 @@ flowchart TD
 
 ## Per-message flow
 
-Both input components call the same method, `RecordPipeline.handle(json, sourceRef, whenDurable)`.
+Every entry point calls the same method, `RecordPipeline.handle(json, sourceRef)`. An overload also takes a `whenDurable` callback, used only by the previous Spring Kafka listener.
 
-- The Kafka route (default, `sftr.ingest: camel`) is defined in YAML, `src/main/resources/routes/kafka-ingest.camel.yaml`, and loaded through `camel.main.routes-include-pattern: classpath:routes/*.yaml`. It has one Kafka consumer (`consumersCount=1`, `maxPollRecords=1`, manual commit) and two steps: `bean: kafkaMessageHandler.handle` hands the message to `RecordPipeline`, then `process: offsetCommitProcessor` commits the offsets that `OffsetCommitter` holds (see "Offsets" below). Topic, brokers, group and offset reset come from `application.yml` through `{{...}}` placeholders. The route is loaded in every mode but has `autoStartup: "{{sftr.kafka.enabled}}"`, so it only starts in `kafka` and `both`. With `sftr.ingest=spring-kafka` also pass `--camel.main.routes-include-pattern=classpath:routes/none` so the two consumers do not both run.
+- The Kafka route (default, `sftr.ingest: camel`) is defined in YAML, `src/main/resources/routes/kafka-ingest.camel.yaml`, and loaded through `camel.main.routes-include-pattern: classpath:routes/*.yaml`. It is a plain Kafka consumer with the default offset handling (see "Offsets" below) and one step: `bean: kafkaMessageHandler.handle` hands the message to `RecordPipeline`. Topic, brokers, group and offset reset come from `application.yml` through `{{...}}` placeholders. The route is loaded in every mode but has `autoStartup: "{{sftr.kafka.enabled}}"`, so it only starts in `kafka` and `both`. With `sftr.ingest=spring-kafka` also pass `--camel.main.routes-include-pattern=classpath:routes/none` so the two consumers do not both run.
 - `KafkaRecordListener` (`sftr.ingest: spring-kafka`) is the previous Spring Kafka listener. It acknowledges right after handling, so it only starts with `write-mode: PER_RECORD`.
 - `FileInputRunner` runs only when `sftr.input.file` is set. A `.txt` file is read as one JSON message per line (blank lines skipped). A `.csv` file uses its header row as keys, and each row becomes a flat JSON object. It counts rows written vs. rejected, never stops on a bad line, and calls `pipeline.flush()` at the end so batch modes write the last rows.
 - `TestMessageController` (`POST /api/test-message`) is a quick-test door, present only with the `rest` or `both` profile (`sftr.rest.enabled: true`). See "Quick test endpoint" below.
@@ -52,7 +52,7 @@ Inside `RecordPipeline.handle()`:
 3. On success, `ReportSink.append(row, day, whenDurable)` hands the row to the sink.
 4. On failure, `RejectWriter.write(sourceRef, summary, day)` appends `sourceRef<TAB>summary` to the day's rejects file, then `sink.whenDurable(whenDurable)`. The summary never contains message content, because the data is regulatory.
 
-`whenDurable` is a callback that runs once the message's outcome is on disk: its row is in the CSV, or its reject line is written and every earlier row is in the CSV too.
+`whenDurable` is an optional callback that runs once the message's outcome is on disk: its row is in the CSV, or its reject line is written and every earlier row is in the CSV too. The Camel Kafka route does not use it; only the Spring Kafka listener does, to acknowledge after the write.
 
 The whole path, with every branch:
 
@@ -72,11 +72,10 @@ flowchart TD
     Q -->|PER_RECORD| W1["open file, write, close<br/>callback runs now"]
     Q -->|"COUNT / INTERVAL"| B["buffer the row<br/>(flush rules below)"]
     B -->|"batch full, deadline, day change,<br/>midnight, cap, shutdown"| W2["open file, write batch, close<br/>callbacks run in order"]
-    W1 --> CB["whenDurable: OffsetCommitter.release()"]
+    W1 --> CB["optional whenDurable callback<br/>(spring-kafka listener only)"]
     W2 --> CB
     RJ --> CB2["callback waits behind earlier<br/>buffered rows, then runs"]
     CB2 --> CB
-    CB --> CM["consumer thread:<br/>OffsetCommitter.commitReleased()"]
 ```
 
 ## Write modes (`sftr.output.write-mode`)
@@ -103,13 +102,13 @@ With `sftr.output.rollover: DAILY` (default), `OutputFileResolver` adds the date
 
 ## Offsets (Kafka with the Camel route)
 
-An offset is committed only after everything up to it is on disk, so with batching a crash never loses rows that were only in memory.
+The Camel Kafka consumer uses its defaults: the Kafka client commits offsets itself (auto commit), and the engine does not hold or release offsets. A message's offset can therefore be committed before its row is on disk.
 
-1. `KafkaMessageHandler` (the `bean` step) gives `RecordPipeline` a callback that calls `OffsetCommitter.release(partition, offset, commit)`.
-2. The sink runs the callback after the row is written: right away in `PER_RECORD`, after the batch in `COUNT` and `INTERVAL`. A rejected message's callback waits behind the rows before it.
-3. Only the Kafka consumer thread may commit (committing from another thread throws `ConcurrentModificationException`). So the second route step, `OffsetCommitProcessor`, calls `OffsetCommitter.commitReleased()` after every message. A batch written by the consumer thread (`COUNT`, or a day change) is committed at once. A batch written by the flusher thread (`INTERVAL`) is committed when the next message arrives.
+- With `PER_RECORD` the row is written as soon as the message is handled, so the gap is tiny.
+- With `COUNT` and `INTERVAL`, rows wait in memory for the batch. If the process crashes, committed messages whose rows were still waiting are **lost**, and messages written but not yet committed are **read again** (a second row).
+- A rejected message goes to the rejects file at once.
 
-Delivery is at least once: after a crash or restart, messages whose rows were written but whose offset was not yet committed are read again and written twice. In `INTERVAL` mode that window lasts until the next message arrives.
+An earlier version committed manually, only after the rows were on disk (an `OffsetCommitter` class and a second route step). It was removed to keep the route simple; [design-camel-batch-writer.md](design-camel-batch-writer.md) describes how it worked.
 
 ## Run modes
 
@@ -176,10 +175,8 @@ All classes are under `com.bmo.sftr.mapping`.
 | Package / class | Role |
 | --- | --- |
 | `SftrMappingApplication` | Spring Boot entry point. Registers `SftrConstants`, `RefDataClient.Properties` and `OutputProperties` as configuration properties. |
-| `routes/kafka-ingest.camel.yaml` | Camel YAML route (a resource, not a class): one Kafka consumer, manual offset commit. Step 1 is the bean `kafkaMessageHandler.handle`, step 2 the process `offsetCommitProcessor`. |
-| `camel.KafkaMessageHandler` | The bean of step 1. Reads topic, partition and offset from the headers, calls the pipeline with a callback that releases the offset, logs and skips any failure. Stops the route before the sink closes. |
-| `camel.OffsetCommitProcessor` | The process of step 2. Calls `OffsetCommitter.commitReleased()` on the consumer thread. |
-| `camel.OffsetCommitter` | Holds offsets whose rows are on disk until the consumer thread commits them. Keeps the highest per partition. |
+| `routes/kafka-ingest.camel.yaml` | Camel YAML route (a resource, not a class): a plain Kafka consumer with default offset handling and one step, the bean `kafkaMessageHandler.handle`. |
+| `camel.KafkaMessageHandler` | The route's bean. Reads topic, partition and offset from the headers to build the source reference, calls the pipeline, logs and skips any failure. Stops the route before the sink closes. |
 | `publisher.MessagePublisherRoute` | Timer route to Kafka, only with `sftr.publisher.enabled=true` (the `publisher` profile). The timer period is 60000 / `rate-per-minute`, which is why this route is Java and not YAML. |
 | `publisher.MessagePublisher` | The two route steps. `next` sets the next message as the body; `afterSend` counts it. Ends the run at `max-messages` or `duration`, whichever comes first, then exits the application. |
 | `publisher.TradeMessageGenerator` | Builds message n as JSON, taking trade type, legal entity and counterparty id in turn from the configured lists. |
