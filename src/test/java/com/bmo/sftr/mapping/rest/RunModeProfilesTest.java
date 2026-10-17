@@ -2,10 +2,10 @@ package com.bmo.sftr.mapping.rest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.bmo.sftr.mapping.camel.KafkaIngestRoute;
 import com.bmo.sftr.mapping.kafka.KafkaRecordListener;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
 import java.io.IOException;
+import org.apache.camel.CamelContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -75,9 +75,10 @@ class RunModeProfilesTest {
         }
 
         @Test
-        void hasTheEndpointAndNoKafkaBeans() {
+        void hasTheEndpointAndNoRunningKafkaConsumer() {
             assertThat(context.getBeanNamesForType(TestMessageController.class)).hasSize(1);
-            assertThat(context.getBeanNamesForType(KafkaIngestRoute.class)).isEmpty();
+            CamelContext camel = context.getBean(CamelContext.class);
+            assertThat(camel.getRouteController().getRouteStatus("sftr-kafka-ingest").isStarted()).isFalse();
             assertThat(context.getBeanNamesForType(KafkaRecordListener.class)).isEmpty();
         }
     }

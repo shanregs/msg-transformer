@@ -46,7 +46,7 @@ class TestMessageControllerTest {
         when(refData.fetch(any())).thenReturn(TestSupport.MAPPER.readTree("""
                 {"find_sftr_party":{"values":{"lei":"549300ABCDEFGHIJ0001"}},
                  "find_sftr_party_sector":{"values":{"natureOfReportingCounterparty":"C","sector":"CDTI"}}}"""));
-        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         OutputProperties props = new OutputProperties(dir.resolve("report.csv").toString(), null, "2026-10-16",
                 Rollover.DAILY, KOLKATA, mode, 100, Duration.ofMinutes(30), 1000);
         Clock clock = Clock.system(KOLKATA);

@@ -16,12 +16,13 @@ import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.support.DefaultExchange;
 import org.junit.jupiter.api.Test;
 
-class KafkaIngestRouteTest {
+class KafkaMessageHandlerTest {
 
     private final RecordPipeline pipeline = mock(RecordPipeline.class);
     private final OffsetCommitter committer = new OffsetCommitter();
-    private final KafkaIngestRoute route =
-            new KafkaIngestRoute(pipeline, committer, "trade-messages", "localhost:9092", "g", "earliest");
+    private final KafkaMessageHandler handler =
+            new KafkaMessageHandler(pipeline, committer, new DefaultCamelContext());
+    private final OffsetCommitProcessor commit = new OffsetCommitProcessor(committer);
     private final KafkaManualCommit manualCommit = mock(KafkaManualCommit.class);
 
     private Exchange exchange(long offset, String body) {
@@ -34,6 +35,12 @@ class KafkaIngestRouteTest {
         return ex;
     }
 
+    /** The two route steps: the bean, then the process. */
+    private void step(Exchange ex) {
+        handler.handle(ex);
+        commit.process(ex);
+    }
+
     /** Makes the mocked pipeline behave like a sink that has already written the row. */
     private void rowIsWrittenImmediately() throws Exception {
         doAnswer(inv -> {
@@ -44,21 +51,21 @@ class KafkaIngestRouteTest {
 
     @Test
     void passesTheMessageAndItsSourceReferenceToThePipeline() throws Exception {
-        route.handle(exchange(7, "{\"a\":1}"));
+        step(exchange(7, "{\"a\":1}"));
         verify(pipeline).handle(eq("{\"a\":1}"), eq("trade-messages-0@7"), any());
     }
 
     @Test
     void commitsRightAfterTheMessageWhenItsRowIsAlreadyOnDisk() throws Exception {
         rowIsWrittenImmediately();
-        route.handle(exchange(7, "{}"));
+        step(exchange(7, "{}"));
         verify(manualCommit).commit();
         assertThat(committer.waiting()).isZero();
     }
 
     @Test
     void doesNotCommitWhileTheRowIsStillWaitingInABatch() throws Exception {
-        route.handle(exchange(7, "{}"));                       // pipeline mock never calls the callback
+        step(exchange(7, "{}"));                       // pipeline mock never calls the callback
         verify(manualCommit, never()).commit();
     }
 
@@ -69,20 +76,20 @@ class KafkaIngestRouteTest {
             held[0] = inv.getArgument(2);                      // the row waits in a batch
             return RecordPipeline.Outcome.WRITTEN;
         }).when(pipeline).handle(eq("{}"), eq("trade-messages-0@1"), any());
-        route.handle(exchange(1, "{}"));
+        step(exchange(1, "{}"));
         verify(manualCommit, never()).commit();
 
         Thread.ofVirtual().start(held[0]).join();              // the flusher thread writes the batch and releases
         verify(manualCommit, never()).commit();                // still nothing: not the consumer thread
 
-        route.handle(exchange(2, "{}"));                       // next message: consumer thread commits
+        step(exchange(2, "{}"));                       // next message: consumer thread commits
         verify(manualCommit).commit();
     }
 
     @Test
     void aFailureIsLoggedAndTheRouteCarriesOn() throws Exception {
         doAnswer(inv -> { throw new java.io.IOException("disk"); }).when(pipeline).handle(any(), any(), any());
-        route.handle(exchange(3, "{}"));                       // must not throw
+        step(exchange(3, "{}"));                       // must not throw
         verify(manualCommit, never()).commit();
     }
 }

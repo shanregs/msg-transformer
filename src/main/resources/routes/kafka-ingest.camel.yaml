@@ -1,0 +1,27 @@
+# Kafka consumption route (Camel YAML DSL). Loaded from classpath:routes/ (camel.main.routes-include-pattern).
+# One consumer, one message at a time, manual offset commit. Placeholders {{...}} come from application.yml.
+#
+#   kafka topic -> bean kafkaMessageHandler.handle   (parse, reference data, mapping, write or batch)
+#              -> process offsetCommitProcessor       (commit offsets whose rows are on disk)
+#
+# The route starts only when sftr.kafka.enabled=true (kafka and both profiles). With sftr.ingest=spring-kafka
+# also pass --camel.main.routes-include-pattern=classpath:routes/none so the two consumers do not both run.
+- route:
+    id: sftr-kafka-ingest
+    autoStartup: "{{sftr.kafka.enabled}}"
+    from:
+      uri: "kafka:{{sftr.kafka.topic}}"
+      parameters:
+        brokers: "{{spring.kafka.bootstrap-servers}}"
+        groupId: "{{spring.kafka.consumer.group-id}}"
+        autoOffsetReset: "{{spring.kafka.consumer.auto-offset-reset}}"
+        consumersCount: 1
+        maxPollRecords: 1
+        allowManualCommit: true
+        autoCommitEnable: false
+      steps:
+        - bean:
+            ref: kafkaMessageHandler
+            method: handle
+        - process:
+            ref: offsetCommitProcessor

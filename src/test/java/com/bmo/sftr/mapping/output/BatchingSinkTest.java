@@ -64,7 +64,7 @@ class BatchingSinkTest {
 
     // 10:00 in Kolkata on 16 Oct
     private final MovableClock clock = new MovableClock("2026-10-16T04:30:00Z");
-    private final RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+    private final RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
 
     private BatchingSink sink(WriteMode mode, int size, Duration interval, int max, SftrCsvWriter writer) {
         OutputProperties props = new OutputProperties(dir.resolve("r.csv").toString(), null, null, Rollover.DAILY, KOLKATA,

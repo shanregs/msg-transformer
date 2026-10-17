@@ -60,7 +60,7 @@ class RecordPipelineRolloverTest {
     void rowsAndRejectsMoveToANewFileAtMidnightInKolkata() throws Exception {
         RefDataClient refData = mock(RefDataClient.class);
         when(refData.fetch(any())).thenReturn(REF);
-        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         OutputProperties props = new OutputProperties(dir.resolve("report.csv").toString(), null, null,
                 Rollover.DAILY, KOLKATA, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000);
         // 18:29 UTC is 23:59 on 16 Oct in Kolkata; 18:31 UTC is 00:01 on 17 Oct

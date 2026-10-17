@@ -16,7 +16,7 @@ class ConfigConsistencyTest {
     @Test
     void realConfigLoadsAndCoversReport() {
         // load() validates every row, including that every constantRef exists
-        MappingConfigLoader.CompiledConfig cfg = MappingConfigLoaderTest.loader("sftr-field-mappings.json").load();
+        MappingConfigLoader.CompiledConfig cfg = MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json").load();
 
         Set<Field> covered = cfg.columns().stream().map(MappingConfigLoader.Column::field).collect(Collectors.toSet());
         List<String> uncovered = Arrays.stream(SftrTransactionReport.class.getDeclaredFields())

@@ -27,7 +27,7 @@ class PerRecordSinkTest {
     @TempDir
     Path dir;
 
-    private final RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+    private final RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
 
     static OutputProperties props(Path file, Rollover rollover, WriteMode mode) {
         return new OutputProperties(file.toString(), null, null, rollover, ZoneId.of("Asia/Kolkata"), mode, 10,
