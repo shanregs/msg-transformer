@@ -117,7 +117,7 @@ public class MappingConfigLoader {
 
     /** Only MAPPED rows that do real work run. PENDING, IGNORE and NOT_APPLICABLE are skipped. */
     private static boolean isActive(FieldMapping m) {
-        return m.status() == FieldMapping.Status.MAPPED && m.mappingType() != FieldMapping.Type.NOT_APPLICABLE;
+        return m.status() == FieldMapping.Status.MAPPED && m.mappingType() != FieldMapping.MappingType.NOT_APPLICABLE;
     }
 
     private CompiledMapping compile(FieldMapping m, Field target) {
@@ -131,7 +131,7 @@ public class MappingConfigLoader {
                 yield (msg, ctx) -> c;
             }
             case DIRECT_DATA_TRANSFORM -> formatter(m);
-            case TRANSFORM, ENRICH -> functions.find(m.handlerName())
+            case TRANSFORM, ENRICH, LOGIC -> functions.find(m.handlerName())
                     .orElseThrow(() -> new IllegalArgumentException("no lambda registered as '" + m.handlerName() + "'"));
             case NOT_APPLICABLE -> throw new IllegalStateException("skipped rows are never compiled");
         };
@@ -157,7 +157,7 @@ public class MappingConfigLoader {
                 DateTimeFormatter inFmt = inPattern == null
                         ? DateHelpers.ISO_FLEXIBLE : DateTimeFormatter.ofPattern(inPattern);
                 DateTimeFormatter outFmt = outPattern == null
-                        ? (m.formatter() == FieldMapping.Formatter.DATE
+                        ? (m.formatter() == FieldMapping.DataFormatter.DATE
                                 ? DateTimeFormatter.ISO_LOCAL_DATE : DateTimeFormatter.ISO_OFFSET_DATE_TIME)
                         : DateTimeFormatter.ofPattern(outPattern);
                 yield dateFormatter(in, inFmt, outFmt, inZone, outZone);
@@ -165,7 +165,7 @@ public class MappingConfigLoader {
         };
     }
 
-    private static MappingFunction numberFormatter(String in, FieldMapping.Formatter type,
+    private static MappingFunction numberFormatter(String in, FieldMapping.DataFormatter type,
                                                    String inPattern, String outPattern) {
         if (inPattern != null) new DecimalFormat(inPattern);          // validate the pattern now
         if (outPattern != null) new DecimalFormat(outPattern);

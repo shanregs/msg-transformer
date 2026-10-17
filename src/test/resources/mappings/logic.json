@@ -1,0 +1,4 @@
+[
+  { "outputField": "CP_CpSide", "mappingType": "LOGIC" },
+  { "outputField": "CP_RepCp", "mappingType": "LOGIC", "handler": "NO_SUCH_HANDLER" }
+]

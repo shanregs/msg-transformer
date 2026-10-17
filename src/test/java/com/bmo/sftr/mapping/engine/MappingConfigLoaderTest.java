@@ -50,6 +50,19 @@ public class MappingConfigLoaderTest {
     }
 
     @Test
+    void logicRowsUseARegisteredLambdaByColumnNameOrHandler() {
+        MappingConfigLoader.CompiledConfig cfg = loader("mappings/logic-ok.json").load();
+        assertThat(cfg.active()).hasSize(2);
+    }
+
+    @Test
+    void logicRowWithoutAMatchingLambdaFails() {
+        assertThatThrownBy(() -> loader("mappings/logic.json").load())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("CP_RepCp: no lambda registered as 'NO_SUCH_HANDLER'");
+    }
+
+    @Test
     void unknownJsonPropertyFails() {
         assertThatThrownBy(() -> loader("mappings/unknown-property.json").load())
                 .isInstanceOf(IllegalStateException.class)

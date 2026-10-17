@@ -34,11 +34,11 @@ A rule is a JSON object. Unknown properties are rejected (a typo such as `inputF
 | Property | Used by | Meaning |
 | --- | --- | --- |
 | `outputField` | all | The CSV column name, for example `CP_RepCp`. Required, must be unique, must match a field on `SftrTransactionReport` (section 6). |
-| `mappingType` | all | `DIRECT`, `HARDCODE`, `DIRECT_DATA_TRANSFORM`, `TRANSFORM`, `ENRICH` or `NOT_APPLICABLE`. Required. |
+| `mappingType` | all | `DIRECT`, `HARDCODE`, `DIRECT_DATA_TRANSFORM`, `TRANSFORM`, `ENRICH`, `LOGIC` or `NOT_APPLICABLE`. Required. (Java enum `FieldMapping.MappingType`.) |
 | `status` | all | `MAPPED` (default), `PENDING` or `IGNORE`. Only `MAPPED` rules run. |
 | `inputField` | `DIRECT`, `DIRECT_DATA_TRANSFORM` | The key to read from the incoming message. |
 | `constantRef` | `HARDCODE` | Key under `sftr.constants.values` whose text is the column value. |
-| `handler` | `TRANSFORM`, `ENRICH` | Name of the lambda in `SftrMappingFunctions`. Optional: defaults to `outputField`. |
+| `handler` | `TRANSFORM`, `ENRICH`, `LOGIC` | Name of the lambda in `SftrMappingFunctions`. Optional: defaults to `outputField`. |
 | `formatter` | `DIRECT_DATA_TRANSFORM` | `INTEGER`, `LONG`, `DECIMAL`, `DOUBLE`, `DATE` or `TIMESTAMP`. Required for that type. |
 | `inputFormatRef`, `outputFormatRef` | `DIRECT_DATA_TRANSFORM` | Keys under `sftr.constants.values` holding a number or date pattern. Optional. |
 | `inputZoneRef`, `outputZoneRef` | `DIRECT_DATA_TRANSFORM` (dates) | Keys under `sftr.constants.values` holding a time zone id. Optional. |
@@ -150,7 +150,7 @@ sftr.constants.values:
   zoneUtc: UTC                          # ... written as 2026-10-16T13:30:00Z
 ```
 
-### 4.4 `TRANSFORM` and `ENRICH`: hand-written logic
+### 4.4 `TRANSFORM`, `ENRICH` and `LOGIC`: hand-written logic
 
 ```json
 { "outputField": "CP_CpSide", "mappingType": "TRANSFORM" }
@@ -159,7 +159,7 @@ sftr.constants.values:
 
 The function is looked up by name in `SftrMappingFunctions`: the `handler` if given, otherwise the `outputField`. No lambda with that name fails the start with `no lambda registered as '<name>'`. Several rules may share one handler (as `CP_EntResponsibleForRep` shares `CP_RepCp`). Registering the same name twice fails the start with `Duplicate mapping function`.
 
-The two names mean different things to the reader only: `TRANSFORM` computes from the message, `ENRICH` uses the reference-data response. The code treats them the same.
+The names mean different things to the reader only: `TRANSFORM` computes from the message, `ENRICH` uses the reference-data response, and `LOGIC` is the general name for any other business logic. The code treats all three the same: it looks up the lambda by `handler` (or the column name).
 
 A lambda sees the message and the `ProcessingContext`:
 
@@ -282,7 +282,7 @@ All of these stop the app. Problems from several rules are listed together under
 | `constantRef is required` | `HARDCODE` without it | Add it. |
 | `formatter is required` | `DIRECT_DATA_TRANSFORM` without it | Add it. |
 | `Missing constant: sftr.constants.<section>.<key>` | A `constantRef`, `...FormatRef`, `...ZoneRef`, or a constant read by a lambda is not in `application.yml` | Add the constant. |
-| `no lambda registered as '<name>'` | `TRANSFORM` or `ENRICH` with no matching lambda | Register it in `SftrMappingFunctions`, or set `handler`. |
+| `no lambda registered as '<name>'` | `TRANSFORM`, `ENRICH` or `LOGIC` with no matching lambda | Register it in `SftrMappingFunctions`, or set `handler`. |
 | A pattern or zone error from Java | Bad `DecimalFormat` or date pattern, or unknown zone id | Fix the constant. |
 | `lookups.<table>: code '<c>' appears under both '<a>' and '<b>'` | One code mapped to two results | Remove one. |
 | `Duplicate mapping function: <name>` | Same lambda name registered twice | Rename one. |
@@ -290,7 +290,7 @@ All of these stop the app. Problems from several rules are listed together under
 ## 10. How to add or change a rule
 
 1. **Copy, constant or conversion:** add a line to `mapper/sftr-field-mappings.json`. Put any constant, pattern or zone in `application.yml` under `sftr.constants.values`.
-2. **Custom logic:** set `TRANSFORM` or `ENRICH`, then add `register("<name>", (msg, ctx) -> ...)` in `SftrMappingFunctions` (keep them grouped by business area).
+2. **Custom logic:** set `TRANSFORM`, `ENRICH` or `LOGIC`, then add `register("<name>", (msg, ctx) -> ...)` in `SftrMappingFunctions` (keep them grouped by business area).
 3. **A brand-new column:** first add a field to `SftrTransactionReport`, named by the rule in section 6, then add the rule. Column order is the order of the rules in the file.
 4. **Park a column:** set `status` to `PENDING` or `IGNORE`.
 5. **Check:** run `mvn test`. `ConfigConsistencyTest` loads the real config against the real class, and `MappingConfigLoaderTest` expects the seed config to have 9 active and 7 skipped rules, so update that count when you activate or add a rule. Add a test for new lambda logic in `SftrMappingFunctionsTest`.
