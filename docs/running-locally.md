@@ -26,7 +26,7 @@ Pick the mode with one profile. With no profile you get Kafka mode.
 | `file` | off | off | Process a `.txt` or `.csv` file (`--sftr.input.file=<path>`), then exit. |
 | `publisher` | off | off | Send generated test messages **to** Kafka (rate, count or duration), then exit. See section 5a. |
 
-Use exactly one of `rest`, `kafka`, `both`, `publisher`. The REST endpoint is `POST /api/test-message` on port 8080. If 8080 is busy on your machine (it was on mine), add `--server.port=18080`, or any free port.
+Use exactly one of `rest`, `kafka`, `both`, `publisher`. The REST endpoint is `POST /api/test-message` on port 9090. The default is 9090 because 8080 is often taken by other applications. If 9090 is busy too, add `--server.port=18080`, or any free port.
 
 Every message, from Kafka, a file or REST, goes through the same pipeline.
 
@@ -56,15 +56,15 @@ mvn package -DskipTests
 java -jar target/sftr-mapping-engine.jar --spring.profiles.active=rest
 ```
 
-Wait for `Started SftrMappingApplication` and `Tomcat started on port 8080`. To use another port add `--server.port=18080`.
+Wait for `Started SftrMappingApplication` and `Tomcat started on port 9090`. To use another port add `--server.port=18080`.
 
 **4. Send a message:**
 
 ```
-curl -X POST http://localhost:8080/api/test-message -H "Content-Type: application/json" -d "{\"trade_ref\":\"1\",\"trade_type\":\"PO\",\"bmoLegalEntity\":\"LDNBB01\",\"counterpartyId\":\"CP1\",\"group_cd\":\"G1\"}"
+curl -X POST http://localhost:9090/api/test-message -H "Content-Type: application/json" -d "{\"trade_ref\":\"1\",\"trade_type\":\"PO\",\"bmoLegalEntity\":\"LDNBB01\",\"counterpartyId\":\"CP1\",\"group_cd\":\"G1\"}"
 ```
 
-(In PowerShell use `curl.exe`, or `Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/test-message -ContentType application/json -Body '{"trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1"}'`.)
+(In PowerShell use `curl.exe`, or `Invoke-RestMethod -Method Post -Uri http://localhost:9090/api/test-message -ContentType application/json -Body '{"trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1"}'`.)
 
 You get:
 
@@ -83,11 +83,29 @@ To start clean, stop the app and delete the `data` folder. It is git-ignored.
 
 The reply fields: `outcome` is `WRITTEN` or `REJECTED` (both are HTTP 200), `flushed` says whether waiting rows were written at once, `reportFile` is the day's CSV and `rejectsFile` is set only for a rejected message. The reason for a reject is in the rejects file. The source on a rejects line is `rest-<n>`, where `n` counts the requests since the app started.
 
+### Sending a message to Kafka through REST
+
+`POST /api/kafka-message` publishes the body to a Kafka topic, so in `both` mode the consumer handles it like any message from a producer. It exists in `rest` and `both` (`sftr.rest.enabled=true`).
+
+```
+curl -X POST "http://localhost:9090/api/kafka-message" -H "Content-Type: application/json" -d "{\"trade_ref\":\"1\",\"trade_type\":\"PO\",\"bmoLegalEntity\":\"LDNBB01\",\"counterpartyId\":\"CP1\"}"
+```
+
+| Part | Meaning |
+| --- | --- |
+| `topic` (query, optional) | Topic to publish to. Default: `sftr.kafka.topic`, the one the consumer listens to. |
+| `key` (query, optional) | Kafka message key. Default: none. |
+| body | Sent exactly as received, not parsed here. A bad message reaches the consumer and lands in the rejects file, which is useful for testing. An empty body gives 400. |
+| answer 200 | `{"topic":"trade-messages","partition":0,"offset":41}`, after the broker has acknowledged. |
+| answer 503 | Kafka could not be reached or did not answer in time (`sftr.rest.publish-timeout`, default 10s; with no broker the producer gives up after 5 s). The message content is never echoed. |
+
+In `rest` mode there is normally no broker, so use `both` mode with the broker from section 5 to see the whole path: REST, Kafka, consumer, CSV. Brokers come from `spring.kafka.bootstrap-servers`.
+
 ## 4. Test with Postman or the IntelliJ HTTP client
 
 | File | How to use it |
 | --- | --- |
-| `samples/sftr-postman-collection.json` | In Postman choose Import and select the file. It has 18 requests in four folders, each with test assertions, and a `baseUrl` variable (default `http://localhost:8080`; change it if you used another port). Run a request, or run the whole collection from the Collection Runner. |
+| `samples/sftr-postman-collection.json` | In Postman choose Import and select the file. It has 18 requests in four folders, each with test assertions, and a `baseUrl` variable (default `http://localhost:9090`; change it if you used another port). Run a request, or run the whole collection from the Collection Runner. |
 | `samples/rest-tests.http` | Open it in IntelliJ (its HTTP Client) and click the green arrow beside a request. Change `@host` at the top if needed. |
 
 Folders A, B and C work in `rest` or `both` mode with the stub running. Folder D needs the batch start-up in section 7. The Postman tests check the HTTP status, the `outcome`, `flushed` and that the rejects file is named; to see the CSV values and reject reasons, open the files in `data`.
@@ -267,7 +285,7 @@ For time-based batching use `--sftr.output.write-mode=INTERVAL --sftr.output.bat
 1. Run, Edit Configurations, plus, **Application** (or **Spring Boot** in IntelliJ Ultimate).
 2. Main class: `com.bmo.sftr.mapping.SftrMappingApplication`. Module: the project module (classpath of `sftr-mapping-engine`).
 3. Working directory: the project folder, so output goes to `<project>/data`.
-4. Program arguments: `--spring.profiles.active=rest` (or `kafka`, `both`). Add `--server.port=18080` if 8080 is busy, and any `--sftr...` option from section 7.
+4. Program arguments: `--spring.profiles.active=rest` (or `kafka`, `both`). Add `--server.port=18080` if 9090 is busy, and any `--sftr...` option from section 7.
 5. Run it with the green arrow, or debug it with the bug icon.
 
 **Where to put breakpoints**
@@ -298,7 +316,7 @@ For time-based batching use `--sftr.output.write-mode=INTERVAL --sftr.output.bat
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `Web server failed to start. Port 8080 was already in use.` | Another program uses 8080. Add `--server.port=18080` and set the Postman `baseUrl` to match. |
+| `Web server failed to start. Port 9090 was already in use.` | Another program uses 9090. Add `--server.port=18080` and set the Postman `baseUrl` to match. |
 | Every message is `REJECTED` with `Reference data unavailable` | The stub is not running or is on another port. Start it, or set `--sftr.refdata.base-url`. |
 | `Missing constant: sftr.constants...`, `no field ...`, `no lambda registered ...` at start | A rule or constant is wrong. See [rules-compilation.md](rules-compilation.md), section 9. |
 | The app starts and exits at once in Kafka mode | It should not (the Camel run controller keeps it alive). Check you are running the current build, and that Kafka is reachable. |

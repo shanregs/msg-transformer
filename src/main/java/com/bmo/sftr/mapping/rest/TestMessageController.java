@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  * mapping, write to the CSV. Only present when {@code sftr.rest.enabled=true} (the {@code rest} or {@code both} profile).
  *
  * <pre>
- * curl -X POST localhost:8080/api/test-message -H "Content-Type: application/json" -d '{"trade_type":"PO",...}'
+ * curl -X POST localhost:9090/api/test-message -H "Content-Type: application/json" -d '{"trade_type":"PO",...}'
  * </pre>
  *
  * A rejected message still answers 200; the {@code outcome} field says {@code REJECTED} and the reason is

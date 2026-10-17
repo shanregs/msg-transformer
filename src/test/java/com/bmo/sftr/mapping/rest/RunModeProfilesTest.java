@@ -45,13 +45,13 @@ class RunModeProfilesTest {
     @Test
     void restModeHasTheEndpointAndNoKafka() {
         assertMode("rest", "false", "true", "servlet");
-        assertThat(profile("rest").getProperty("server.port")).isEqualTo("8080");
+        assertThat(profile("rest").getProperty("server.port")).isEqualTo("9090");
     }
 
     @Test
     void bothModeHasKafkaAndTheEndpoint() {
         assertMode("both", "true", "true", "servlet");
-        assertThat(profile("both").getProperty("server.port")).isEqualTo("8080");
+        assertThat(profile("both").getProperty("server.port")).isEqualTo("9090");
     }
 
     @Test

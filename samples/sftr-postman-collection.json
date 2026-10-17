@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "SFTR Mapping Engine - test message endpoint",
-    "description": "Sends one message at a time to POST /api/test-message, which runs the whole flow (reference data, mapping rules, write to the CSV).\n\nStart the app with the rest or both profile (see docs/running-locally.md) and the reference-data stub (python samples/refdata-stub.py). Change the baseUrl collection variable if the port is not 8080.\n\nFolder D needs the app started with --sftr.output.write-mode=COUNT --sftr.output.batch-size=3; run its requests in order.",
+    "description": "Sends one message at a time to POST /api/test-message, which runs the whole flow (reference data, mapping rules, write to the CSV).\n\nStart the app with the rest or both profile (see docs/running-locally.md) and the reference-data stub (python samples/refdata-stub.py). Change the baseUrl collection variable if the port is not 9090.\n\nFolder D needs the app started with --sftr.output.write-mode=COUNT --sftr.output.batch-size=3; run its requests in order.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:8080"
+      "value": "http://localhost:9090"
     }
   ],
   "item": [

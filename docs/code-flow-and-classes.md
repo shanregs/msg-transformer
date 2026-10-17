@@ -118,7 +118,7 @@ One profile picks the mode:
 | Profile | Kafka consumer | REST endpoint | Web server |
 | --- | --- | --- | --- |
 | `kafka` (also the default with no profile) | on | off | none |
-| `rest` | off | on | Tomcat on `server.port` (default 8080) |
+| `rest` | off | on | Tomcat on `server.port` (default 9090) |
 | `both` | on | on | Tomcat on `server.port` |
 | `file` | off | off | none; reads `sftr.input.file`, then exits |
 
@@ -126,10 +126,10 @@ They are the files `application-kafka.yml`, `application-rest.yml`, `application
 
 ## Quick test endpoint
 
-Start the app with `--spring.profiles.active=rest` (REST only) or `both` (REST and Kafka). It starts a web server on `server.port` (default 8080; use `--server.port=<port>` if that is busy).
+Start the app with `--spring.profiles.active=rest` (REST only) or `both` (REST and Kafka). It starts a web server on `server.port` (default 9090; use `--server.port=<port>` if that is busy).
 
 ```
-curl -X POST localhost:8080/api/test-message -H "Content-Type: application/json"      -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}'
+curl -X POST localhost:9090/api/test-message -H "Content-Type: application/json"      -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}'
 ```
 
 The message goes through the same `RecordPipeline` as Kafka and file input: reference-data call, mappings, sink. The answer is JSON: `outcome` (`WRITTEN` or `REJECTED`, both HTTP 200), `flushed`, `reportFile` (today's CSV) and `rejectsFile` (only when rejected). With `flush=true` (default) a row waiting in a batch is written at once, so it is in the CSV when the call returns; use `?flush=false` to see the batch modes behave as in production. `RecordPipeline` serialises its calls with a lock, so this endpoint can run next to the Kafka consumer.

@@ -12,6 +12,11 @@ spring:
       max-poll-records: 1             # one message at a time
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:                         # used by POST /api/kafka-message (rest or both profile)
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        max.block.ms: 5000            # with no broker the call fails after 5 s instead of 60 s
     listener:
       ack-mode: manual_immediate
 
@@ -31,7 +36,8 @@ sftr:
     config: classpath:mapper/sftr-field-mappings.json
 
   rest:
-    enabled: false                    # set by the profiles: rest or both turn on POST /api/test-message
+    enabled: false                    # set by the profiles: rest or both turn on POST /api/test-message and POST /api/kafka-message
+    publish-timeout: 10s              # POST /api/kafka-message waits this long for the broker to acknowledge
 
   ingest: camel                       # camel (Camel Kafka route, needed for batch write modes) | spring-kafka (previous listener, PER_RECORD only)
 

@@ -1,7 +1,7 @@
 # Requests for the test endpoint. Start the app with the rest or both profile and the stub
 # (python samples/refdata-stub.py). See docs/running-locally.md. Run a request with the green arrow in the gutter.
-# Change @host if the app is not on port 8080.
-@host = http://localhost:8080
+# Change @host if the app is not on port 9090.
+@host = http://localhost:9090
 
 ### A1 London entity, trade PO
 # Expect one CSV row: CP_RepCp 549300CP1 plus zeros, CP_NatureOfRepCp C, CP_SecOfRepCp CDTI, CP_BranchOfRepCp GB (the LDNBB prefix is a London entity), CP_CpSide GIVE (PO is a GIVE code).
@@ -217,3 +217,23 @@ Content-Type: application/json
   "group_cd": "G1"
 }
 
+
+### K1 publish to Kafka (needs a broker; the topic defaults to sftr.kafka.topic)
+# In both mode the Kafka consumer picks this up and writes a row, like any Kafka message.
+# Answer: {"topic":"trade-messages","partition":0,"offset":<n>}. Without a broker: 503 after about 5 seconds.
+POST {{host}}/api/kafka-message
+Content-Type: application/json
+
+{
+  "trade_ref": "K1",
+  "trade_type": "PO",
+  "bmoLegalEntity": "LDNBB01",
+  "counterpartyId": "CP1",
+  "group_cd": "G1"
+}
+
+### K2 publish to another topic with a key
+POST {{host}}/api/kafka-message?topic=other-topic&key=k1
+Content-Type: application/json
+
+{ "trade_ref": "K2", "trade_type": "PI" }
