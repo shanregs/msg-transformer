@@ -1,5 +1,11 @@
 package com.bmo.sftr.mapping.rest;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.Duration;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +42,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Kafka message", description = "Put one message on a Kafka topic")
 @ConditionalOnProperty(name = "sftr.rest.enabled", havingValue = "true")
 public class KafkaPublishController {
 
@@ -58,9 +65,19 @@ public class KafkaPublishController {
         this.timeout = timeout;
     }
 
+    @Operation(summary = "Publish one message to a Kafka topic",
+            description = "The body is sent exactly as received. In both mode the consumer then handles it like any message. Needs a broker.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(name = "London entity, PO", value = "{\"trade_ref\":\"T1\",\"trade_type\":\"PO\",\"bmoLegalEntity\":\"LDNBB01\",\"counterpartyId\":\"CP1\",\"group_cd\":\"G1\"}"))))
+    @ApiResponse(responseCode = "200", description = "broker acknowledged: topic, partition, offset")
+    @ApiResponse(responseCode = "400", description = "empty body")
+    @ApiResponse(responseCode = "503", description = "Kafka unreachable or no answer in time")
     @PostMapping(path = "/kafka-message", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> publish(@RequestBody(required = false) String body,
+                                     @Parameter(description = "defaults to sftr.kafka.topic, the topic the consumer listens to")
                                      @RequestParam(required = false) String topic,
+                                     @Parameter(description = "optional Kafka message key")
                                      @RequestParam(required = false) String key) {
         if (body == null || body.isBlank()) {
             return ResponseEntity.badRequest().body(new Error("Empty message"));

@@ -101,6 +101,17 @@ curl -X POST "http://localhost:9090/api/kafka-message" -H "Content-Type: applica
 
 In `rest` mode there is normally no broker, so use `both` mode with the broker from section 5 to see the whole path: REST, Kafka, consumer, CSV. Brokers come from `spring.kafka.bootstrap-servers`.
 
+### Swagger UI (OpenAPI)
+
+With the `rest` or `both` profile the app serves an interactive API page, so you can try both endpoints from the browser without Postman:
+
+| URL | What |
+| --- | --- |
+| `http://localhost:9090/swagger-ui.html` | Swagger UI: pick an endpoint, press Try it out, edit the example body, Execute. |
+| `http://localhost:9090/v3/api-docs` | The OpenAPI document (JSON), for importing into Postman or another tool. `/v3/api-docs.yaml` gives YAML. |
+
+Both endpoints have an example body (the London-entity `PO` message). In Postman choose Import, then Link, and paste the `/v3/api-docs` URL to get the same two requests. Swagger is off in the `kafka`, `file` and `publisher` profiles (there is no web server) and follows `sftr.rest.enabled` through `springdoc.api-docs.enabled` and `springdoc.swagger-ui.enabled`. If you changed the port, use that port in the URLs.
+
 ## 4. Test with Postman or the IntelliJ HTTP client
 
 | File | How to use it |
