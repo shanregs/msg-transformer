@@ -1,5 +1,7 @@
 # C4 Diagrams: Camel route and configurable CSV write modes
 
+> **Historical.** `KafkaIngestRoute` in these diagrams is now the YAML route `routes/kafka-ingest.camel.yaml` with the bean `KafkaMessageHandler` and the process `OffsetCommitProcessor`. Current diagrams: [c4-architecture.md](c4-architecture.md).
+
 Target design for branch `camel-batch-writer`. Written design: [design-camel-batch-writer.md](design-camel-batch-writer.md). Diagrams are Mermaid.
 
 ## Level 1: System context

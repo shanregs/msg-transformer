@@ -289,7 +289,7 @@ All of these stop the app. Problems from several rules are listed together under
 
 ## 10. How to add or change a rule
 
-1. **Copy, constant or conversion:** add a line to `sftr-field-mappings.json`. Put any constant, pattern or zone in `application.yml` under `sftr.constants.values`.
+1. **Copy, constant or conversion:** add a line to `mapper/sftr-field-mappings.json`. Put any constant, pattern or zone in `application.yml` under `sftr.constants.values`.
 2. **Custom logic:** set `TRANSFORM` or `ENRICH`, then add `register("<name>", (msg, ctx) -> ...)` in `SftrMappingFunctions` (keep them grouped by business area).
 3. **A brand-new column:** first add a field to `SftrTransactionReport`, named by the rule in section 6, then add the rule. Column order is the order of the rules in the file.
 4. **Park a column:** set `status` to `PENDING` or `IGNORE`.

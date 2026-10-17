@@ -1,5 +1,7 @@
 # Design: Camel Kafka route and configurable CSV write modes
 
+> **Historical.** This records how the first version was designed. The route class `KafkaIngestRoute` described here was later replaced by the YAML route `routes/kafka-ingest.camel.yaml`, the bean `KafkaMessageHandler` and the process `OffsetCommitProcessor`. See [code-flow-and-classes.md](code-flow-and-classes.md) for the current design.
+
 Branch: `camel-batch-writer` (created from `file-input`). Status: implemented on this branch (steps 0 to 7; step 8 is this documentation). Section 11 lists what was built. Decisions confirmed: duplicates after a crash are acceptable, exactly three write modes, newest Camel that supports Spring Boot 4.1 and Java 25, `FileInputRunner` stays as it is.
 Diagrams: [c4-camel-batch-writer.md](c4-camel-batch-writer.md). Current design: [code-flow-and-classes.md](code-flow-and-classes.md).
 

@@ -31,7 +31,7 @@ One Spring Boot application (`sftr-mapping-engine.jar`), no database, no web ser
 ```mermaid
 flowchart LR
     subgraph doors["Entry points (any one per run)"]
-        K["KafkaIngestRoute<br/>Camel, default"]
+        K["kafka-ingest.camel.yaml<br/>Camel YAML route, default"]
         L["KafkaRecordListener<br/>Spring Kafka, PER_RECORD only"]
         F["FileInputRunner<br/>.txt or .csv"]
         R["TestMessageController<br/>rest or both profile"]
@@ -64,11 +64,11 @@ flowchart LR
 
 | Layer | Classes | Responsibility |
 | --- | --- | --- |
-| Entry points | `KafkaIngestRoute`, `KafkaRecordListener`, `FileInputRunner`, `TestMessageController` | Get a message string and a source reference. Nothing else. |
+| Entry points | `routes/kafka-ingest.camel.yaml` (calls `KafkaMessageHandler`), `KafkaRecordListener`, `FileInputRunner`, `TestMessageController` | Get a message string and a source reference. Nothing else. |
 | Coordination | `RecordPipeline`, `ReportDay` | Take the day once, call the transformer, hand the row to the sink or the reject to the reject writer, run the callback. |
 | Transformation | `MessageTransformer`, `RefDataClient`, `RecordProcessor`, `MappingConfigLoader` | Message to row. Rules are compiled by the loader at startup. |
 | Output | `ReportSink`, `PerRecordSink`, `BatchingSink`, `SftrCsvWriter`, `RejectWriter`, `OutputFileResolver` | Decide when and where rows and rejects are written. |
-| Kafka commit | `OffsetCommitter` | Hold released offsets until the consumer thread commits them. |
+| Kafka commit | `OffsetCommitProcessor`, `OffsetCommitter` | Hold released offsets until the consumer thread commits them. |
 | Configuration | `OutputProperties`, `SftrConstants`, `RefDataClient.Properties` | Typed, validated settings. |
 
 ## 4. The two phases
@@ -142,7 +142,9 @@ Files are `<name>-yyyy-mm-dd.csv` and `<name>-yyyy-mm-dd.csv.rejects` (`rollover
 | Which door | `sftr.ingest`, `sftr.kafka.enabled`, `sftr.input.file`, `sftr.rest.enabled` | `camel` (default) or `spring-kafka`; profiles `kafka`, `rest`, `both`, `file` |
 | Output | `sftr.output.*` | `file`, `rejects-file`, `write-mode`, `batch-size`, `batch-interval`, `max-buffered-records`, `rollover`, `file-zone`, `file-date` |
 | Reference data | `sftr.refdata.*` | `base-url`, `path`, timeouts, `max-attempts`, `backoff`, `request-fields` |
-| Rules | `sftr.mapping.config` + `sftr-field-mappings.json` | one rule per column |
+| Rules | `sftr.mapping.config` + `mapper/sftr-field-mappings.json` | one rule per column |
+| Kafka route | `routes/kafka-ingest.camel.yaml`, `camel.main.routes-include-pattern` | topic, brokers, group and offset reset from `spring.kafka.*`; starts only when `sftr.kafka.enabled` |
+| Publisher | `sftr.publisher.*`, profile `publisher` | `rate-per-minute`, `max-messages`, `duration`, `topic`, value lists |
 | Constants | `sftr.constants.*` | `values`, `lists`, `lookups` |
 | Kafka | `spring.kafka.*`, `sftr.kafka.topic` | brokers, group id, offset reset |
 
