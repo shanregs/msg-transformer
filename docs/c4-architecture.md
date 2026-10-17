@@ -47,6 +47,7 @@ flowchart TB
         repo["TradeRepository<br/>Spring Data JPA, read only<br/>keyset query: id greater than last, limit"]
         ent["Trade (entity)<br/>id, created_by, created_on,<br/>event, data_json"]
         dbp["DbProperties<br/>event, page-size"]
+        seed["TradeSeeder<br/>seed profile only<br/>10 sample rows if the table is empty"]
         pipe["<b>RecordPipeline</b><br/>one record at a time<br/>day, transform, append<br/>throws RecordProcessingException"]
         day["ReportDay<br/>one clock reading per record<br/>midnight in Asia/Kolkata"]
         tf["MessageTransformer<br/>parse, enrich, map"]
@@ -70,6 +71,7 @@ flowchart TB
         fetch --> repo
         repo --> ent
         dbp -.->|event, page size| fetch
+        seed -.->|persist at start-up| ent
         fetch -->|"data_json, trade:id"| pipe
         mc -->|"body, rest-n"| pipe
         pipe -->|today| day
@@ -195,6 +197,10 @@ classDiagram
         <<record>>
         event, pageSize
     }
+    class TradeSeeder {
+        <<ApplicationRunner, seed profile>>
+        run(args)
+    }
     class RecordPipeline {
         handle(json, sourceRef)
         flush()
@@ -207,6 +213,7 @@ classDiagram
     TradeController ..> TradeFetchService
     TradeFetchService ..> TradeRepository
     TradeFetchService ..> DbProperties
+    TradeSeeder ..> Trade : inserts when the table is empty
     TradeFetchService ..> RecordPipeline
     TradeRepository ..> Trade
     Trade --> TradeEvent

@@ -1,8 +1,8 @@
 package com.bmo.sftr.mapping.rest;
 
 import com.bmo.sftr.mapping.db.TradeEvent;
-import com.bmo.sftr.mapping.db.TradeFetchService;
-import com.bmo.sftr.mapping.db.TradeFetchService.RunInProgressException;
+import com.bmo.sftr.mapping.service.TradeFetchService;
+import com.bmo.sftr.mapping.service.TradeFetchService.RunInProgressException;
 import com.bmo.sftr.mapping.output.OutputFileResolver;
 import com.bmo.sftr.mapping.output.ReportDay;
 import io.swagger.v3.oas.annotations.Operation;

@@ -1,7 +1,9 @@
-package com.bmo.sftr.mapping.db;
+package com.bmo.sftr.mapping.service;
 
-import com.bmo.sftr.mapping.service.RecordPipeline;
-import com.bmo.sftr.mapping.service.RecordProcessingException;
+import com.bmo.sftr.mapping.db.DbProperties;
+import com.bmo.sftr.mapping.db.Trade;
+import com.bmo.sftr.mapping.db.TradeEvent;
+import com.bmo.sftr.mapping.db.TradeRepository;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;

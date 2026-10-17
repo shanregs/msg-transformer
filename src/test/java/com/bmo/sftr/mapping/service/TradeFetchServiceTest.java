@@ -1,4 +1,4 @@
-package com.bmo.sftr.mapping.db;
+package com.bmo.sftr.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -12,8 +12,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.bmo.sftr.mapping.service.RecordPipeline;
-import com.bmo.sftr.mapping.service.RecordProcessingException;
+import com.bmo.sftr.mapping.db.DbProperties;
+import com.bmo.sftr.mapping.db.Trade;
+import com.bmo.sftr.mapping.db.TradeEvent;
+import com.bmo.sftr.mapping.db.TradeRepository;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;

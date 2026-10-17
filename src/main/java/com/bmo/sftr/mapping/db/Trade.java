@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -22,6 +24,7 @@ import org.hibernate.type.SqlTypes;
 public class Trade {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)       // the database assigns the id (serial or identity column)
     private Long id;
 
     @Column(name = "created_by")
@@ -42,6 +45,12 @@ public class Trade {
         // for JPA
     }
 
+    /** A new row; the database assigns the id when it is saved. */
+    public Trade(String createdBy, Instant createdOn, TradeEvent event, String dataJson) {
+        this(null, createdBy, createdOn, event, dataJson);
+    }
+
+    /** A row with a known id, for tests that build rows by hand. */
     public Trade(Long id, String createdBy, Instant createdOn, TradeEvent event, String dataJson) {
         this.id = id;
         this.createdBy = createdBy;

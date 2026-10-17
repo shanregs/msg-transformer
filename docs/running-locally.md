@@ -16,14 +16,22 @@ How to set up the database, build and start the engine, run it over the `trade` 
 
 The application reads the table `trade`, which another application fills. Locally you create it yourself.
 
-**Create the database and the table** (psql asks for the `postgres` password; run both from the project root):
+**Quickest way: let the application seed it.** Create only the empty database, then start the app once with the `seed` profile (section 3, step 3). The profile creates the `trade` table if it is missing and inserts **10 sample `RECEIVED` trades**, but only when the table is empty, so using it again adds nothing:
+
+```
+"C:\Program Files\PostgreSQL\18\bin\psql" -U postgres -h localhost -f samples/db/01-create-database.sql
+```
+
+The 10 trades use ten trade types, London and other entities, and one counterparty (`NONATURE`) for which the stub has no nature. With the stub running, a table run over them gives `read 10, written 10, failed 0`. The seeder is for local development only; never switch it on against a real database.
+
+**Or create the table with SQL** (psql asks for the `postgres` password; run both from the project root):
 
 ```
 "C:\Program Files\PostgreSQL\18\bin\psql" -U postgres -h localhost -f samples/db/01-create-database.sql
 "C:\Program Files\PostgreSQL\18\bin\psql" -U postgres -h localhost -d sftr -f samples/db/02-trade-table.sql
 ```
 
-`02-trade-table.sql` creates the table and 7 sample rows: three good `RECEIVED` rows, one `RECEIVED` row that fails in the reference-data call, one `RECEIVED` row that is not a JSON object, and one row each for `PROCESSED` and `PUBLISHED`, which are never read.
+`02-trade-table.sql` creates the table and 7 sample rows (useful for trying failures): three good `RECEIVED` rows, one `RECEIVED` row that fails in the reference-data call, one `RECEIVED` row that is not a JSON object, and one row each for `PROCESSED` and `PUBLISHED`, which are never read.
 
 | Column | Type | Meaning |
 | --- | --- | --- |
@@ -63,7 +71,13 @@ mvn clean package
 
 This builds `target/sftr-mapping-engine.jar` and runs the tests (they use an in-memory H2 database, so they need no Postgres).
 
-**3. Start the engine:**
+**3. Start the engine.** The first time, add the `seed` profile to fill the empty table with 10 sample trades (skip it if you used the SQL script):
+
+```
+java -jar target/sftr-mapping-engine.jar --spring.profiles.active=seed
+```
+
+After that start it without the profile:
 
 ```
 java -jar target/sftr-mapping-engine.jar
@@ -77,7 +91,7 @@ Wait for `Started SftrMappingApplication` and `Tomcat started on port 9090`. The
 curl -X POST "http://localhost:9090/api/trades/process"
 ```
 
-(In PowerShell use `curl.exe`, or `Invoke-RestMethod -Method Post -Uri http://localhost:9090/api/trades/process`.) The call returns when the run has finished. With the sample rows:
+(In PowerShell use `curl.exe`, or `Invoke-RestMethod -Method Post -Uri http://localhost:9090/api/trades/process`.) The call returns when the run has finished. With the 10 seeded trades the answer is `read 10, written 10, failed 0`. With the 7 rows of `02-trade-table.sql`:
 
 ```
 {"event":"RECEIVED","read":5,"written":3,"failed":2,"firstId":1,"lastId":5,"durationMs":349,"reportFile":".\\data\\sftr-report-2026-10-17.csv"}
@@ -207,7 +221,7 @@ To write each row at once, use `--sftr.output.write-mode=PER_RECORD`.
 1. Run, Edit Configurations, plus, **Spring Boot** (in the Community edition use **Application**).
 2. Main class: `com.bmo.sftr.mapping.SftrMappingApplication`.
 3. Environment variables: `SFTR_DB_PASSWORD=<your postgres password>` (add `SFTR_DB_USER` or `SFTR_DB_URL` only if they differ from section 2).
-4. Program arguments (optional): `--server.port=18080` if 9090 is busy, `--sftr.output.batch-size=3` to watch batching.
+4. Program arguments (optional): `--spring.profiles.active=seed` the first time, to fill an empty table; `--server.port=18080` if 9090 is busy, `--sftr.output.batch-size=3` to watch batching.
 5. Working directory: the project root, so `data/` is created there.
 6. Start the stub first (section 3) and run the configuration with the green arrow, or debug with the bug icon.
 
@@ -239,8 +253,8 @@ To write each row at once, use `--sftr.output.write-mode=PER_RECORD`.
 | `Web server failed to start. Port 9090 was already in use.` | Another program uses 9090. Add `--server.port=18080`. |
 | App stops at start-up with `Connection to localhost:5432 refused` or `password authentication failed` | The Postgres service is not running, or `SFTR_DB_PASSWORD` / `SFTR_DB_USER` / `SFTR_DB_URL` is wrong. Check with psql (section 2). |
 | `database "sftr" does not exist` | Run `01-create-database.sql` (section 2). |
-| `relation "trade" does not exist` | Run `02-trade-table.sql` against the `sftr` database. |
-| `read: 0` | No row has the event `RECEIVED` (check `select event, count(*) from trade group by event`), or the table is empty. |
+| `relation "trade" does not exist` | Start once with `--spring.profiles.active=seed` (it creates the table), or run `02-trade-table.sql` against the `sftr` database. |
+| `read: 0` | The table is empty (start once with `--spring.profiles.active=seed` to fill it), or no row has the event `RECEIVED` (check `select event, count(*) from trade group by event`). |
 | Every row fails with `Reference data unavailable` | The stub is not running or is on another port. Start it, or set `--sftr.refdata.base-url`. |
 | `Missing constant: sftr.constants...`, `no field ...`, `no lambda registered ...` at start | A rule or constant is wrong. See [rules-compilation.md](rules-compilation.md), section 9. |
 | A column name error such as `column "createdBy" does not exist` | The real table uses other column names. Change the `@Column(name = ...)` values in `Trade.java`. |

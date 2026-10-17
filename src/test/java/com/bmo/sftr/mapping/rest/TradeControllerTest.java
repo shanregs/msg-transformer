@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bmo.sftr.mapping.db.TradeEvent;
-import com.bmo.sftr.mapping.db.TradeFetchService;
+import com.bmo.sftr.mapping.service.TradeFetchService;
 import com.bmo.sftr.mapping.output.OutputFileResolver;
 import com.bmo.sftr.mapping.output.OutputProperties;
 import com.bmo.sftr.mapping.output.OutputProperties.Rollover;

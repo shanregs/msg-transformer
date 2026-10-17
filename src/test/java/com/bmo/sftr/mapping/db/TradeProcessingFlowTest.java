@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.bmo.sftr.mapping.TestSupport;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
+import com.bmo.sftr.mapping.service.TradeFetchService;
 import jakarta.persistence.EntityManager;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * RECEIVED rows are processed; other events are not; a bad row is skipped and nothing else is written.
  */
 @SpringBootTest(properties = {"sftr.output.file-date=2026-01-01", "sftr.output.write-mode=COUNT",
+        "spring.datasource.url=jdbc:h2:mem:flowtest;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "sftr.output.batch-size=100", "sftr.db.page-size=2"})
 @ActiveProfiles("test")
 class TradeProcessingFlowTest {
@@ -50,8 +52,8 @@ class TradeProcessingFlowTest {
         return "{\"trade_type\":\"" + tradeType + "\",\"bmoLegalEntity\":\"LDNBB01\",\"counterpartyId\":\"CP1\"}";
     }
 
-    private void insert(long id, TradeEvent event, String dataJson) {
-        tx.executeWithoutResult(s -> em.persist(new Trade(id, "other-app", Instant.parse("2026-10-17T00:00:00Z"), event, dataJson)));
+    private void insert(TradeEvent event, String dataJson) {      // the database assigns ids 1, 2, 3 ... in this order
+        tx.executeWithoutResult(s -> em.persist(new Trade("other-app", Instant.parse("2026-10-17T00:00:00Z"), event, dataJson)));
     }
 
     @BeforeEach
@@ -63,12 +65,12 @@ class TradeProcessingFlowTest {
 
     @Test
     void onlyReceivedRowsAreProcessedABadRowIsSkippedAndTheCsvHoldsTheGoodOnes() throws Exception {
-        insert(1, TradeEvent.RECEIVED, json("PO"));
-        insert(2, TradeEvent.PROCESSED, json("PI"));          // not RECEIVED: ignored
-        insert(3, TradeEvent.RECEIVED, "{\"trade_type\":\"PI\"}".replace("PI", "PI"));
-        insert(4, TradeEvent.RECEIVED, "[1,2,3]");            // valid JSON, not an object: fails
-        insert(5, TradeEvent.PUBLISHED, json("PO"));          // ignored
-        insert(6, TradeEvent.RECEIVED, json("PI"));
+        insert(TradeEvent.RECEIVED, json("PO"));
+        insert(TradeEvent.PROCESSED, json("PI"));          // not RECEIVED: ignored
+        insert(TradeEvent.RECEIVED, "{\"trade_type\":\"PI\"}".replace("PI", "PI"));
+        insert(TradeEvent.RECEIVED, "[1,2,3]");            // valid JSON, not an object: fails
+        insert(TradeEvent.PUBLISHED, json("PO"));          // ignored
+        insert(TradeEvent.RECEIVED, json("PI"));
 
         TradeFetchService.Summary s = service.process(null);
 
