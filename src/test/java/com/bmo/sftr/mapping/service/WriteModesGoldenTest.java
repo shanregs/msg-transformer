@@ -42,7 +42,7 @@ class WriteModesGoldenTest {
         when(refData.fetch(any())).thenReturn(TestSupport.MAPPER.readTree("""
                 {"find_sftr_party":{"values":{"lei":"549300ABCDEFGHIJ0001"}},
                  "find_sftr_party_sector":{"values":{"natureOfReportingCounterparty":"C","sector":"CDTI"}}}"""));
-        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         Path out = dir.resolve(mode + ".csv");
         OutputProperties props = new OutputProperties(out.toString(), null, "2026-01-01", Rollover.NONE, KOLKATA,
                 mode, 3, Duration.ofMinutes(30), 1000);

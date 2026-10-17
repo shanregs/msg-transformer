@@ -1,6 +1,6 @@
 # Mapping Rules: How the Config Becomes Running Code
 
-Every column of the SFTR report is defined by one **rule**: one line in `src/main/resources/sftr-field-mappings.json`. This document explains what a rule is, how the rules are compiled once at startup, what happens to them for every message, and what fails when a rule is wrong.
+Every column of the SFTR report is defined by one **rule**: one line in `../src/main/resources/mapper/sftr-field-mappings.json`. This document explains what a rule is, how the rules are compiled once at startup, what happens to them for every message, and what fails when a rule is wrong.
 
 Related: [code-flow-and-classes.md](code-flow-and-classes.md) (the whole flow), [design-and-architecture.md](design-and-architecture.md) (why it is built this way), [c4-architecture.md](c4-architecture.md) (diagrams).
 

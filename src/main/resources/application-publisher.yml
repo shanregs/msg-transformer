@@ -1,0 +1,19 @@
+# Publisher mode: send generated trade messages to Kafka. No consumer, no web server.
+# Run with --spring.profiles.active=publisher plus any of:
+#   --sftr.publisher.rate-per-minute=120     messages per minute (0 = as fast as possible)
+#   --sftr.publisher.max-messages=500        stop after 500 messages
+#   --sftr.publisher.duration=2m             stop after 2 minutes
+# It stops at the first limit reached, then the application exits. With no limit it runs until stopped.
+spring:
+  main:
+    web-application-type: none
+camel:
+  main:
+    run-controller: true
+sftr:
+  kafka:
+    enabled: false          # this process does not consume
+  rest:
+    enabled: false
+  publisher:
+    enabled: true

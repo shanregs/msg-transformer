@@ -11,7 +11,7 @@ class OutputColumnsTest {
 
     @Test
     void constantsMatchTheMappingFileExactly() {
-        List<String> fromFile = MappingConfigLoaderTest.loader("sftr-field-mappings.json").load()
+        List<String> fromFile = MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json").load()
                 .columns().stream().map(MappingConfigLoader.Column::name).toList();
 
         assertThat(OutputColumns.all()).containsExactlyInAnyOrderElementsOf(fromFile);

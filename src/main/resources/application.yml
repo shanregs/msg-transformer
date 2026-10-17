@@ -20,6 +20,7 @@ camel:
     # Camel's Kafka consumer threads are daemon threads, so without this the JVM exits right after startup.
     # Follows sftr.kafka.enabled, so the file mode still exits when the file has been processed.
     run-controller: ${sftr.kafka.enabled:true}
+    routes-include-pattern: classpath:routes/*.yaml    # Camel YAML routes (Kafka consumption)
 
 logging:
   level:
@@ -27,7 +28,7 @@ logging:
 
 sftr:
   mapping:
-    config: classpath:sftr-field-mappings.json
+    config: classpath:mapper/sftr-field-mappings.json
 
   rest:
     enabled: false                    # set by the profiles: rest or both turn on POST /api/test-message
@@ -81,6 +82,15 @@ sftr:
       cpSide:
         GIVE: [PO, DP, RP, TP, BP, BC, CLD, B, RPO]
         TAKE: [PI, DV, RV, TV, LP, LC, CLR, L, RPI]
+
+  publisher:                          # message publisher, active with the "publisher" profile
+    topic: ${sftr.kafka.topic}
+    rate-per-minute: 60               # messages per minute; 0 = as fast as possible
+    max-messages: 0                   # stop after this many; 0 = no limit
+    duration: 0s                      # stop after this long; 0 = no limit (stops at the first limit reached)
+    trade-types: [PO, PI, RP, RV]     # used in turn
+    legal-entities: [LDNBB01, TORBB02]
+    counterparty-ids: [CP1, CP2, CP3]
 
   input:
     # file: ./data/input.csv          # set to read messages from a .txt/.csv file instead of Kafka (use the "file" profile)

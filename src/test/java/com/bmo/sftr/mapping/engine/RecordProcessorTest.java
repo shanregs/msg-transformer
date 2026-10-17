@@ -26,7 +26,7 @@ class RecordProcessorTest {
 
     @Test
     void seedConfigSetsActiveFieldsAndLeavesSkippedNull() {
-        RecordProcessor rp = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+        RecordProcessor rp = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         JsonNode msg = TestSupport.MAPPER.readTree(
                 "{\"trade_type\":\"PO\",\"bmoLegalEntity\":\"LDNBB01\",\"cparty_branch_cd\":\"X\"}");
 

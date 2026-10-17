@@ -31,7 +31,7 @@ public class MappingConfigLoaderTest {
 
     @Test
     void realConfigHasNineActiveAndSevenSkipped() {
-        MappingConfigLoader.CompiledConfig cfg = loader("sftr-field-mappings.json").load();
+        MappingConfigLoader.CompiledConfig cfg = loader("mapper/sftr-field-mappings.json").load();
         assertThat(cfg.columns()).hasSize(16);
         assertThat(cfg.active()).hasSize(9);
         assertThat(cfg.skipped()).isEqualTo(7);

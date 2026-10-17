@@ -43,7 +43,7 @@ class RecordPipelineTest {
     }
 
     private RecordPipeline pipeline() {
-        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("sftr-field-mappings.json"));
+        RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         return new RecordPipeline(refData, processor, new SftrCsvWriter(','), TestSupport.realConstants(),
                 TestSupport.MAPPER, out.toString(), "", "2026-01-01");
     }

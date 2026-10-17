@@ -183,7 +183,7 @@ logging:
 
 sftr:
   mapping:
-    config: classpath:sftr-field-mappings.json
+    config: classpath:mapper/sftr-field-mappings.json
 
   runner:
     enabled: false                    # set true (command line) to run the batch

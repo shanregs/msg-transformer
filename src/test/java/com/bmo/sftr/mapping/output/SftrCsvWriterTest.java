@@ -18,7 +18,7 @@ class SftrCsvWriterTest {
     Path dir;
 
     private List<MappingConfigLoader.Column> columns() {
-        return MappingConfigLoaderTest.loader("sftr-field-mappings.json").load().columns();
+        return MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json").load().columns();
     }
 
     private String write(char delimiter, SftrTransactionReport... reports) throws Exception {
