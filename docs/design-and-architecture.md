@@ -39,6 +39,7 @@ flowchart LR
         L["KafkaRecordListener<br/>Spring Kafka, PER_RECORD only"]
         F["FileInputRunner<br/>.txt or .csv"]
         R["TestMessageController<br/>rest or both profile"]
+        KP["KafkaPublishController<br/>POST /api/kafka-message<br/>rest or both profile"]
     end
     subgraph core["Processing"]
         P["RecordPipeline<br/>one message at a time"]
@@ -66,11 +67,14 @@ flowchart LR
     S -.->|row on disk, release offset| O
     K -->|step 2: process| OP
     OP -->|commit released offsets| O
+    KP -.->|publish to the topic| KT[("Kafka topic")]
+    KT -.->|consumed by| K
 ```
 
 | Layer | Classes | Responsibility |
 | --- | --- | --- |
 | Entry points | `routes/kafka-ingest.camel.yaml` (calls `KafkaMessageHandler`), `KafkaRecordListener`, `FileInputRunner`, `TestMessageController` | Get a message string and a source reference. Nothing else. |
+| Kafka publishing | `KafkaPublishController` | Not an entry point: it puts a message on the topic (`POST /api/kafka-message`), so the consumer handles it like any producer's message. `rest` or `both` profile. |
 | Coordination | `RecordPipeline`, `ReportDay` | Take the day once, call the transformer, hand the row to the sink or the reject to the reject writer, run the callback. |
 | Transformation | `MessageTransformer`, `RefDataClient`, `RecordProcessor`, `MappingConfigLoader` | Message to row. Rules are compiled by the loader at startup. |
 | Output | `ReportSink`, `PerRecordSink`, `BatchingSink`, `SftrCsvWriter`, `RejectWriter`, `OutputFileResolver` | Decide when and where rows and rejects are written. |
@@ -122,6 +126,7 @@ The run ends at the **first** limit reached: `max-messages` (0 = none) or `durat
 | Camel for Kafka ingestion | Requested; small route; `camel-kafka` supports manual commit | Keep Spring Kafka (still available, `PER_RECORD` only) |
 | Define the Kafka route in YAML (bean + process) | The wiring is visible and editable without Java; endpoint settings come from `application.yml` | A `RouteBuilder` class (the first version) |
 | Route loaded in every mode, started by `autoStartup` | One switch (`sftr.kafka.enabled`) already exists; beans always exist so nothing fails to wire | Load the route only in Kafka profiles (needs a different include pattern per profile) |
+| REST endpoint publishes to Kafka (not to the pipeline) | The test then covers the real path, including the consumer, offsets and write modes | Calling `RecordPipeline` directly (that is `/api/test-message`) |
 | Publisher route in Java | The timer period is computed from the rate | YAML with a precomputed `period-ms` setting the operator must calculate |
 | Output column names as constants | A typo is a compile error, and a test compares the constants with the mapping file | String literals in each lambda registration |
 | Commit offsets after the write | With batching, rows wait in memory; committing early would lose them on a crash | Commit on receipt |
@@ -138,7 +143,7 @@ The run ends at the **first** limit reached: `max-messages` (0 = none) or `durat
 | --- | --- | --- |
 | Camel Kafka consumer (one) | Polls, runs `RecordPipeline`, commits released offsets | A platform thread. The only thread that may commit. |
 | `sftr-batch-flusher` (one virtual thread) | Writes a batch when its deadline passes | Only for `COUNT` and `INTERVAL`. Started on the first buffered row. |
-| Web request thread | `POST /api/test-message` | Only with the `rest` or `both` profile. `RecordPipeline` serialises it with the consumer. |
+| Web request thread | `POST /api/test-message`, `POST /api/kafka-message` | Only with the `rest` or `both` profile. `RecordPipeline` serialises the first with the consumer; the second only waits for the broker's acknowledgement. |
 | Main thread | Runs `FileInputRunner` in file mode | The app exits when it is done. |
 | Camel timer thread | Publisher mode: builds and sends each message | One thread, so messages are sent in order. |
 | `publisher-deadline` (daemon) | Publisher mode: ends the run when `duration` has passed | Only when `duration` is set. |
@@ -187,6 +192,7 @@ Files are `<name>-yyyy-mm-dd.csv` and `<name>-yyyy-mm-dd.csv.rejects` (`rollover
 | Reference data | `sftr.refdata.*` | `base-url`, `path`, timeouts, `max-attempts`, `backoff`, `request-fields` |
 | Rules | `sftr.mapping.config` + `mapper/sftr-field-mappings.json` | one rule per column |
 | Kafka route | `routes/kafka-ingest.camel.yaml`, `camel.main.routes-include-pattern` | topic, brokers, group and offset reset from `spring.kafka.*`; starts only when `sftr.kafka.enabled` |
+| REST publish to Kafka | `sftr.rest.publish-timeout`, `spring.kafka.producer.*` | wait for the broker (10s); producer `max.block.ms` 5000 so a missing broker fails fast |
 | Publisher | `sftr.publisher.*`, profile `publisher` | `rate-per-minute`, `max-messages`, `duration`, `topic`, value lists |
 | Constants | `sftr.constants.*` | `values`, `lists`, `lookups` |
 | Kafka | `spring.kafka.*`, `sftr.kafka.topic` | brokers, group id, offset reset |
@@ -209,6 +215,7 @@ Run modes are profiles: `kafka` (default, Kafka only, no web server), `rest` (te
 - Pause and resume of the Kafka route when the output is unwritable is not implemented; the sink refuses new rows instead.
 - The Camel route and Spring Boot 4 pairing is verified with Camel 4.23.0.
 - The YAML route and the publisher are covered by unit and route tests with no broker; a run against a real broker is by hand (see [running-locally.md](running-locally.md), sections 5 and 5a).
+- `POST /api/kafka-message` accepts any topic name and does no parsing; it is a test tool and should not be exposed outside a development machine.
 - The publisher sends unkeyed messages with a fixed set of values; it is a load and smoke tool, not a data generator.
 
 History of how the Camel route and write modes were designed: [design-camel-batch-writer.md](design-camel-batch-writer.md) and [c4-camel-batch-writer.md](c4-camel-batch-writer.md).

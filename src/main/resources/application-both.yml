@@ -1,6 +1,6 @@
 # Both mode: consume from Kafka AND accept POST /api/test-message at the same time.
 # Both go through the same pipeline, which handles one message at a time.
-# Run with --spring.profiles.active=both   (change the port with --server.port=<port> if 8080 is busy)
+# Run with --spring.profiles.active=both   (change the port with --server.port=<port> if 9090 is busy)
 spring:
   main:
     web-application-type: servlet
@@ -10,4 +10,4 @@ sftr:
   rest:
     enabled: true
 server:
-  port: 8080
+  port: 9090

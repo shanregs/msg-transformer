@@ -26,7 +26,7 @@ flowchart TD
     F -->|"sftr.ingest=camel<br/>and sftr.kafka.enabled"| G["routes/kafka-ingest.camel.yaml starts<br/>one Kafka consumer"]
     F -->|"sftr.ingest=spring-kafka"| H["KafkaRecordListener starts<br/>(PER_RECORD only)"]
     F -->|"sftr.input.file set"| I["FileInputRunner runs,<br/>then the app exits"]
-    F -->|"rest or both profile"| J["TestMessageController<br/>+ web server"]
+    F -->|"rest or both profile"| J["TestMessageController<br/>KafkaPublishController<br/>+ web server"]
     F -->|"publisher profile"| PB["MessagePublisherRoute<br/>sends generated messages to Kafka,<br/>exits at the first limit"]
     G --> K["Waiting for messages<br/>(camel.main.run-controller keeps the JVM alive)"]
     H --> K
@@ -118,7 +118,7 @@ One profile picks the mode:
 | Profile | Kafka consumer | REST endpoint | Web server |
 | --- | --- | --- | --- |
 | `kafka` (also the default with no profile) | on | off | none |
-| `rest` | off | on | Tomcat on `server.port` (default 8080) |
+| `rest` | off | on (`/api/test-message`, `/api/kafka-message`) | Tomcat on `server.port` (default 9090) |
 | `both` | on | on | Tomcat on `server.port` |
 | `file` | off | off | none; reads `sftr.input.file`, then exits |
 
@@ -126,13 +126,25 @@ They are the files `application-kafka.yml`, `application-rest.yml`, `application
 
 ## Quick test endpoint
 
-Start the app with `--spring.profiles.active=rest` (REST only) or `both` (REST and Kafka). It starts a web server on `server.port` (default 8080; use `--server.port=<port>` if that is busy).
+Start the app with `--spring.profiles.active=rest` (REST only) or `both` (REST and Kafka). It starts a web server on `server.port` (default 9090; use `--server.port=<port>` if that is busy).
 
 ```
-curl -X POST localhost:8080/api/test-message -H "Content-Type: application/json"      -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}'
+curl -X POST localhost:9090/api/test-message -H "Content-Type: application/json"      -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1","group_cd":"G1"}'
 ```
 
 The message goes through the same `RecordPipeline` as Kafka and file input: reference-data call, mappings, sink. The answer is JSON: `outcome` (`WRITTEN` or `REJECTED`, both HTTP 200), `flushed`, `reportFile` (today's CSV) and `rejectsFile` (only when rejected). With `flush=true` (default) a row waiting in a batch is written at once, so it is in the CSV when the call returns; use `?flush=false` to see the batch modes behave as in production. `RecordPipeline` serialises its calls with a lock, so this endpoint can run next to the Kafka consumer.
+
+## Sending a message to Kafka through REST
+
+`POST /api/kafka-message` (same profiles, `rest` or `both`) is the other way round: it does **not** run the pipeline. `KafkaPublishController` hands the body to a `KafkaTemplate` and waits for the broker's acknowledgement.
+
+```
+curl -X POST "localhost:9090/api/kafka-message?topic=trade-messages&key=k1" -H "Content-Type: application/json" -d '{"trade_ref":"1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1"}'
+```
+
+`topic` defaults to `sftr.kafka.topic`, the topic the consumer listens to; `key` is optional. The body is sent exactly as received, without parsing, so a bad message reaches the consumer and ends up in the rejects file. The answer is `{"topic","partition","offset"}` (200), 400 for an empty body, or 503 if Kafka cannot be reached within `sftr.rest.publish-timeout` (the producer itself gives up after `max.block.ms`, 5 s). The content is never logged or echoed.
+
+In `both` mode the message then travels the normal Kafka path: Kafka topic, the YAML route, `KafkaMessageHandler`, `RecordPipeline`, the CSV. In `rest` mode there is usually no broker, so the call answers 503.
 
 ## How the JSON config becomes running logic
 
@@ -172,6 +184,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `publisher.MessagePublisher` | The two route steps. `next` sets the next message as the body; `afterSend` counts it. Ends the run at `max-messages` or `duration`, whichever comes first, then exits the application. |
 | `publisher.TradeMessageGenerator` | Builds message n as JSON, taking trade type, legal entity and counterparty id in turn from the configured lists. |
 | `publisher.PublisherProperties` | Typed `sftr.publisher` settings with start-up validation. |
+| `rest.KafkaPublishController` | Optional `POST /api/kafka-message`: publishes the body to a Kafka topic with a `KafkaTemplate` and answers with partition and offset (`rest` or `both` profile). |
 | `rest.TestMessageController` | Optional `POST /api/test-message` for quick tests (`rest` profile only). |
 | `kafka.KafkaRecordListener` | Previous Spring Kafka listener, used when `sftr.ingest=spring-kafka`. `PER_RECORD` only. |
 | `input.FileInputRunner` | Batch alternative to Kafka. Reads a `.txt` (JSON lines) or `.csv` file, calls the pipeline per line, flushes at the end. |
