@@ -262,13 +262,15 @@ public class MappingConfigLoader {
 
     private List<FieldMapping> read() {
         ObjectMapper strict = mapper.rebuild().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        List<FieldMapping> fieldMappings = null;
         try (InputStream in = configResource.getInputStream()) {
-            return strict.readValue(in, new TypeReference<List<FieldMapping>>() {});
+            fieldMappings= strict.readValue(in, new TypeReference<List<FieldMapping>>() {});
         } catch (IOException e) {
             throw new IllegalStateException("Cannot read SFTR mapping config " + configResource, e);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Invalid SFTR mapping config " + configResource + ": " + e.getMessage(), e);
         }
+        return fieldMappings;
     }
 
     private static String require(String value, String propertyName) {
