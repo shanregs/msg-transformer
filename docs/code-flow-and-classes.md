@@ -6,7 +6,7 @@ Read [design-and-architecture.md](design-and-architecture.md) first for the purp
 
 The app turns trade messages (JSON) into rows of an SFTR CSV report, and every output column is defined by one line of JSON config. It runs in two phases:
 
-1. **Startup (once):** `MappingConfigLoader` reads `mapper/sftr-field-mappings.json` and compiles each line into a small function. `RecordProcessor` holds the compiled list.
+1. **Startup (once):** `MappingConfigLoader` reads `mapper/sftr-field-mappings.json` and compiles each line into a small function. `MappingConfiguration` exposes the result as one `CompiledConfig` bean; `RecordProcessor` takes the active mappings from it and `SftrCsvWriter` takes the column list.
 2. **Per message (repeated):** an input source (Kafka through a Camel route, or a file) hands a message to `RecordPipeline`. The pipeline turns it into a row with `MessageTransformer`, and a `ReportSink` decides when the row is written to that day's CSV file.
 
 A bad message never stops the run. It goes to that day's `.rejects` file and processing continues with the next one.
@@ -18,7 +18,7 @@ Everything that can be wrong is checked here, before the first message.
 ```mermaid
 flowchart TD
     A["java -jar sftr-mapping-engine.jar<br/>profiles: file / rest (optional)"] --> B["Spring binds settings<br/>OutputProperties validates sftr.output.*<br/>SftrConstants builds lookups"]
-    B --> C["RecordProcessor created<br/>MappingConfigLoader.load():<br/>read rules, compile, smoke-run<br/>(see rules-compilation.md)"]
+    B --> C["MappingConfiguration:<br/>MappingConfigLoader.load() once:<br/>read rules, compile, smoke-run<br/>(see rules-compilation.md)"]
     C --> D{"rules valid?"}
     D -->|no| X["Startup fails:<br/>every problem listed"]
     D -->|yes| E["ReportSinkConfig picks the sink<br/>PER_RECORD, COUNT or INTERVAL<br/>and the Clock in file-zone"]
@@ -189,7 +189,8 @@ All classes are under `com.bmo.sftr.mapping`.
 | `service.RecordPipeline` | Coordinates one message: take the day, transform, append to the sink or write a reject, run the callback. Single-threaded by design. |
 | `service.MessageTransformer` | Parse, reference-data fetch, run the mappings. Returns a row or throws. |
 | `engine.MappingConfigLoader` | Startup: reads and validates the JSON config, compiles rows into `Column` and `CompiledMapping`. |
-| `engine.RecordProcessor` | Holds the compiled config and runs the active mappings for each message. |
+| `engine.MappingConfiguration` | Compiles the mapping file once and exposes the result as the `CompiledConfig` bean (columns, active mappings, skipped count). Logs the column counts. |
+| `engine.RecordProcessor` | Takes the active mappings from `CompiledConfig` and runs them for each message. It does not know the CSV columns. |
 | `functions.SftrMappingFunctions` | Registry of named business-logic lambdas, for example `CP_CpSide` and `CP_BranchOfRepCp`. |
 | `functions.RefDataExtractors` | Reads values from the ref-data response by dotted path, for example `find_sftr_party.values.lei`. |
 | `functions.DateHelpers` | Date parsing and formatting helpers, including the flexible ISO parser. |
@@ -206,7 +207,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `output.PerRecordSink` | Open, append, close per row. |
 | `output.BatchingSink` | Buffer, lock, count and timer triggers, day and midnight flush, retry after a failed write, flusher virtual thread. |
 | `output.RejectWriter` | Appends reject lines to the day's rejects file and builds the content-free reason. |
-| `output.SftrCsvWriter` | Opens the CSV (header from the `Column` list, only for a new or empty file), writes rows, reads each value back from the report by reflection. |
+| `output.SftrCsvWriter` | Holds the `Column` list from `CompiledConfig` (so the sinks need no reference to the rules engine). Opens the CSV (header from the `Column` list, only for a new or empty file), writes rows, reads each value back from the report by reflection. |
 
 **Configuration files.** `application-kafka.yml`, `application-rest.yml` and `application-both.yml` choose the run mode, and `application-publisher.yml` turns the message publisher on. `application.yml` holds the ingest choice, Kafka, output settings, ref-data settings, constants and lookups. `application-file.yml` turns Kafka off for the `file` profile. `mapper/sftr-field-mappings.json` is the column definitions, and `routes/kafka-ingest.camel.yaml` is the Kafka route.
 

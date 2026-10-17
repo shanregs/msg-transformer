@@ -23,7 +23,7 @@ class SftrCsvWriterTest {
 
     private String write(char delimiter, SftrTransactionReport... reports) throws Exception {
         Path file = dir.resolve("out.csv");
-        try (SftrCsvWriter.Session s = new SftrCsvWriter(delimiter).open(file, columns())) {
+        try (SftrCsvWriter.Session s = new SftrCsvWriter(delimiter, columns()).open(file)) {
             for (SftrTransactionReport r : reports) s.write(r);
         }
         return Files.readString(file, StandardCharsets.UTF_8);

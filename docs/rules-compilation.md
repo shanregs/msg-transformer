@@ -46,7 +46,7 @@ A rule is a JSON object. Unknown properties are rejected (a typo such as `inputF
 
 ## 3. Compilation, step by step
 
-`MappingConfigLoader.load()` runs once, when `RecordProcessor` is created at startup.
+`MappingConfigLoader.load()` runs once at startup, called from `MappingConfiguration`, which shares the result as the `CompiledConfig` bean.
 
 ```mermaid
 flowchart TD

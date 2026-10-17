@@ -51,7 +51,7 @@ class TestMessageControllerTest {
                 Rollover.DAILY, KOLKATA, mode, 100, Duration.ofMinutes(30), 1000);
         Clock clock = Clock.system(KOLKATA);
         OutputFileResolver files = new OutputFileResolver(props);
-        var sink = new ReportSinkConfig().reportSink(props, new SftrCsvWriter(','), processor, files, clock);
+        var sink = new ReportSinkConfig().reportSink(props, TestSupport.csvWriter(), files, clock);
         ReportDay day = new ReportDay(props, clock);
         RecordPipeline pipeline = new RecordPipeline(
                 new MessageTransformer(refData, processor, TestSupport.realConstants(), TestSupport.MAPPER),

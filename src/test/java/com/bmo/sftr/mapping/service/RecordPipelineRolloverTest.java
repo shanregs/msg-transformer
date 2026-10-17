@@ -65,7 +65,7 @@ class RecordPipelineRolloverTest {
                 Rollover.DAILY, KOLKATA, WriteMode.PER_RECORD, 10, Duration.ofMinutes(5), 1000);
         // 18:29 UTC is 23:59 on 16 Oct in Kolkata; 18:31 UTC is 00:01 on 17 Oct
         MovableClock clock = new MovableClock("2026-10-16T18:29:00Z");
-        RecordPipeline p = new RecordPipeline(refData, processor, new SftrCsvWriter(','),
+        RecordPipeline p = new RecordPipeline(refData, processor, TestSupport.csvWriter(),
                 TestSupport.realConstants(), TestSupport.MAPPER, props, clock);
 
         p.handle(msg("1"), "t-0@0");

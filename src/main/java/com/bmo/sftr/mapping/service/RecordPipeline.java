@@ -70,7 +70,7 @@ public class RecordPipeline {
     RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
                    SftrConstants constants, ObjectMapper mapper, OutputProperties props, Clock clock) {
         this(new MessageTransformer(refData, processor, constants, mapper),
-                new PerRecordSink(csvWriter, processor, new OutputFileResolver(props)),
+                new PerRecordSink(csvWriter, new OutputFileResolver(props)),
                 new RejectWriter(new OutputFileResolver(props)), new ReportDay(props, clock));
     }
 

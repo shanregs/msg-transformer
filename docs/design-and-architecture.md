@@ -70,15 +70,15 @@ flowchart LR
 | Entry points | `routes/kafka-ingest.camel.yaml` (calls `KafkaMessageHandler`), `KafkaRecordListener`, `FileInputRunner`, `TestMessageController` | Get a message string and a source reference. Nothing else. |
 | Kafka publishing | `KafkaPublishController` | Not an entry point: it puts a message on the topic (`POST /api/kafka-message`), so the consumer handles it like any producer's message. `rest` or `both` profile. |
 | Coordination | `RecordPipeline`, `ReportDay` | Take the day once, call the transformer, hand the row to the sink or the reject to the reject writer, run the callback. |
-| Transformation | `MessageTransformer`, `RefDataClient`, `RecordProcessor`, `MappingConfigLoader` | Message to row. Rules are compiled by the loader at startup. |
-| Output | `ReportSink`, `PerRecordSink`, `BatchingSink`, `SftrCsvWriter`, `RejectWriter`, `OutputFileResolver` | Decide when and where rows and rejects are written. |
+| Transformation | `MessageTransformer`, `RefDataClient`, `RecordProcessor`, `MappingConfigLoader`, `MappingConfiguration` | Message to row. Rules are compiled once at startup and shared as the `CompiledConfig` bean. |
+| Output | `ReportSink`, `PerRecordSink`, `BatchingSink`, `SftrCsvWriter`, `RejectWriter`, `OutputFileResolver` | Decide when and where rows and rejects are written. The CSV writer knows the columns; the sinks know nothing about the rules engine. |
 | Column names | `OutputColumns`, `SftrMappingFunctions` | One constant per output column; lambdas are registered by constant. |
 | Publisher | `MessagePublisherRoute`, `MessagePublisher`, `TradeMessageGenerator`, `PublisherProperties` | Generate test messages and send them to Kafka at a rate, for a count or for a time. Only in the `publisher` profile. |
 | Configuration | `OutputProperties`, `SftrConstants`, `RefDataClient.Properties` | Typed, validated settings. |
 
 ## 4. The two phases
 
-1. **Startup.** Spring creates the beans. `RecordProcessor` asks `MappingConfigLoader` to compile the rules (see [rules-compilation.md](rules-compilation.md)). `OutputProperties` validates the output settings. The sink is chosen from `write-mode`. If anything is wrong, the app stops here.
+1. **Startup.** Spring creates the beans. `MappingConfiguration` asks `MappingConfigLoader` to compile the rules once (see [rules-compilation.md](rules-compilation.md)) and shares the result as the `CompiledConfig` bean: `RecordProcessor` uses its mappings, `SftrCsvWriter` its column list. `OutputProperties` validates the output settings. The sink is chosen from `write-mode`. If anything is wrong, the app stops here.
 2. **Running.** Messages flow through `RecordPipeline`. Nothing is re-read or re-compiled.
 
 ## 4a. Camel routes and the publisher
