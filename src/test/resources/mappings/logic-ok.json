@@ -1,0 +1,4 @@
+[
+  { "outputField": "CP_CpSide", "mappingType": "LOGIC" },
+  { "outputField": "CP_EntResponsibleForRep", "mappingType": "LOGIC", "handler": "CP_CpSide" }
+]
