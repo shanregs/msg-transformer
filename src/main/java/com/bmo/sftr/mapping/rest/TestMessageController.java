@@ -4,6 +4,11 @@ import com.bmo.sftr.mapping.output.OutputFileResolver;
 import com.bmo.sftr.mapping.output.ReportDay;
 import com.bmo.sftr.mapping.service.RecordPipeline;
 import com.bmo.sftr.mapping.service.RecordPipeline.Outcome;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Test message", description = "Run one message through the same flow as Kafka")
 @ConditionalOnProperty(name = "sftr.rest.enabled", havingValue = "true")
 public class TestMessageController {
 
@@ -46,8 +52,15 @@ public class TestMessageController {
         this.files = files;
     }
 
+    @Operation(summary = "Run one message through the whole flow",
+            description = "Reference-data call, mapping, write to the CSV. A rejected message still answers 200; outcome is REJECTED and the reason is in the rejects file.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(name = "London entity, PO", value = "{\"trade_ref\":\"T1\",\"trade_type\":\"PO\",\"bmoLegalEntity\":\"LDNBB01\",\"counterpartyId\":\"CP1\",\"group_cd\":\"G1\"}"))))
+    @ApiResponse(responseCode = "200", description = "outcome WRITTEN or REJECTED")
     @PostMapping(path = "/test-message", produces = MediaType.APPLICATION_JSON_VALUE)
     public Result post(@RequestBody(required = false) String body,
+                       @io.swagger.v3.oas.annotations.Parameter(description = "write a row waiting in a batch at once")
                        @RequestParam(defaultValue = "true") boolean flush) throws IOException {
         Outcome outcome = pipeline.handle(body, "rest-" + sequence.incrementAndGet());
         if (flush) pipeline.flush();

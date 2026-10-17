@@ -184,6 +184,7 @@ All classes are under `com.bmo.sftr.mapping`.
 | `publisher.MessagePublisher` | The two route steps. `next` sets the next message as the body; `afterSend` counts it. Ends the run at `max-messages` or `duration`, whichever comes first, then exits the application. |
 | `publisher.TradeMessageGenerator` | Builds message n as JSON, taking trade type, legal entity and counterparty id in turn from the configured lists. |
 | `publisher.PublisherProperties` | Typed `sftr.publisher` settings with start-up validation. |
+| `rest.OpenApiConfig` | Title and description for the OpenAPI document (springdoc). Swagger UI is at `/swagger-ui.html`, the document at `/v3/api-docs`; only with the `rest` or `both` profile. |
 | `rest.KafkaPublishController` | Optional `POST /api/kafka-message`: publishes the body to a Kafka topic with a `KafkaTemplate` and answers with partition and offset (`rest` or `both` profile). |
 | `rest.TestMessageController` | Optional `POST /api/test-message` for quick tests (`rest` profile only). |
 | `kafka.KafkaRecordListener` | Previous Spring Kafka listener, used when `sftr.ingest=spring-kafka`. `PER_RECORD` only. |

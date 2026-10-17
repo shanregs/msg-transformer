@@ -192,6 +192,7 @@ Files are `<name>-yyyy-mm-dd.csv` and `<name>-yyyy-mm-dd.csv.rejects` (`rollover
 | Reference data | `sftr.refdata.*` | `base-url`, `path`, timeouts, `max-attempts`, `backoff`, `request-fields` |
 | Rules | `sftr.mapping.config` + `mapper/sftr-field-mappings.json` | one rule per column |
 | Kafka route | `routes/kafka-ingest.camel.yaml`, `camel.main.routes-include-pattern` | topic, brokers, group and offset reset from `spring.kafka.*`; starts only when `sftr.kafka.enabled` |
+| API documentation | `springdoc.*`, `rest.OpenApiConfig` | Swagger UI `/swagger-ui.html` and OpenAPI `/v3/api-docs`; on only when `sftr.rest.enabled` |
 | REST publish to Kafka | `sftr.rest.publish-timeout`, `spring.kafka.producer.*` | wait for the broker (10s); producer `max.block.ms` 5000 so a missing broker fails fast |
 | Publisher | `sftr.publisher.*`, profile `publisher` | `rate-per-minute`, `max-messages`, `duration`, `topic`, value lists |
 | Constants | `sftr.constants.*` | `values`, `lists`, `lookups` |

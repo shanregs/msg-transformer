@@ -27,6 +27,12 @@ camel:
     run-controller: ${sftr.kafka.enabled:true}
     routes-include-pattern: classpath:routes/*.yaml    # Camel YAML routes (Kafka consumption)
 
+springdoc:                          # Swagger UI at /swagger-ui.html, only with the rest or both profile
+  api-docs:
+    enabled: ${sftr.rest.enabled:false}
+  swagger-ui:
+    enabled: ${sftr.rest.enabled:false}
+
 logging:
   level:
     com.bmo.sftr: INFO
