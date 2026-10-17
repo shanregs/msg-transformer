@@ -53,7 +53,7 @@ The rules come from a business spreadsheet (the source of truth), which also giv
 
 | ID | Requirement |
 |---|---|
-| R1 | Mapping rules are loaded from `sftr-field-mappings.json`. Row order in the file is the CSV column order. |
+| R1 | Mapping rules are loaded from `mapper/sftr-field-mappings.json`. Row order in the file is the CSV column order. |
 | R2 | Every output column name keeps its spreadsheet form in the CSV header (for example `CP_RepCp`). |
 | R3 | The report property for a column is derived: lower-case the text before the first `_`, keep the rest as written, drop remaining `_`. Examples: `CP_RepCp` becomes `cpRepCp`, `IM_SubmitterID` becomes `imSubmitterID`. |
 | R4 | All TRANSFORM and ENRICH logic lives in **one** class, `SftrMappingFunctions`, as lambdas stored in a `Map<String, MappingFunction>`. The lambda for a column is found by the column's own name, unless the row sets `handler` (used when columns share a lambda). |
@@ -246,7 +246,7 @@ May stay in Java: input JSON field names used inside lambdas (for example `trade
 
 ---
 
-## 6. Mapping file `sftr-field-mappings.json`
+## 6. Mapping file `mapper/sftr-field-mappings.json`
 
 ### 6.1 Row schema
 
@@ -893,7 +893,7 @@ Use JUnit 5, AssertJ and Mockito from `spring-boot-starter-test`. Use `@MockitoB
 | `RefDataClientTest` | Uses `com.sun.net.httpserver.HttpServer` on an ephemeral port: 503 twice then 200 succeeds after 3 attempts; 400 is not retried (exactly one request); persistent 503 fails after `max-attempts`; null message fields are omitted from the request body; request keys follow `request-fields`; read timeout triggers retry |
 | `SftrReportServiceIT` | `@SpringBootTest` with `@MockitoBean RefDataClient`. 50 input lines including one malformed JSON line and one record whose reference-data call fails: CSV has 48 data rows in input order, rejects file lists exactly those two line numbers and contains no record data, `RunResult` is (50, 48, 2). Concurrency check: with the mock recording the maximum number of simultaneous calls, that maximum never exceeds `max-concurrent-ref-data-calls`. Determinism check: runs with limit 1 and limit 50 produce byte-identical CSV files |
 | `GoldenFileTest` | Sample input file through the whole pipeline equals `src/test/resources/golden/expected.csv` byte for byte |
-| `ConfigConsistencyTest` | Real `sftr-field-mappings.json` and real `application.yml` load without error against the real `SftrTransactionReport`; every `constantRef` exists; prints the report fields that have no row. Fails on missing rows only when run with `-Dsftr.strict=true` (so the report can be replaced and filled in gradually) |
+| `ConfigConsistencyTest` | Real `mapper/sftr-field-mappings.json` and real `application.yml` load without error against the real `SftrTransactionReport`; every `constantRef` exists; prints the report fields that have no row. Fails on missing rows only when run with `-Dsftr.strict=true` (so the report can be replaced and filled in gradually) |
 
 ### 11.1 Test fixtures
 

@@ -24,10 +24,13 @@ Pick the mode with one profile. With no profile you get Kafka mode.
 | `kafka` (or no profile) | on | off | Production behaviour: consume the topic only. No web server is started. |
 | `both` | on | on | Consume Kafka and also accept test messages through REST. |
 | `file` | off | off | Process a `.txt` or `.csv` file (`--sftr.input.file=<path>`), then exit. |
+| `publisher` | off | off | Send generated test messages **to** Kafka (rate, count or duration), then exit. See section 5a. |
 
-Use exactly one of `rest`, `kafka`, `both`. The REST endpoint is `POST /api/test-message` on port 8080. If 8080 is busy on your machine (it was on mine), add `--server.port=18080`, or any free port.
+Use exactly one of `rest`, `kafka`, `both`, `publisher`. The REST endpoint is `POST /api/test-message` on port 8080. If 8080 is busy on your machine (it was on mine), add `--server.port=18080`, or any free port.
 
 Every message, from Kafka, a file or REST, goes through the same pipeline.
+
+The Kafka consumer is a Camel YAML route, `src/main/resources/routes/kafka-ingest.camel.yaml`. It calls the bean `kafkaMessageHandler.handle` for each message and then the process `offsetCommitProcessor`. The route is loaded in every mode but starts only when `sftr.kafka.enabled=true` (the `kafka` and `both` profiles). The mapping rules are in `src/main/resources/mapper/sftr-field-mappings.json`.
 
 ## 3. Quick start: REST mode in five minutes
 
@@ -135,9 +138,40 @@ What you should see:
 | --- | --- |
 | `kafka` | The log shows `Routes startup (total:1)` and no `Tomcat started`. A REST call is refused (nothing listens). A message on the topic appears in the CSV. |
 | `both` | The log shows both `Tomcat started` and `Routes startup (total:1)`. A Kafka message and a REST message end up in the same CSV, in the order they were handled. A bad Kafka message appears in the rejects file as `trade-messages-0@<offset>`. |
-| `rest` | The log shows `Routes startup (total:0)`: no Kafka consumer. |
+| `rest` | The log shows `Routes startup (total:1 disabled:1)`: the Kafka route is loaded but not started, so there is no Kafka consumer. |
 
 A new consumer group reads the topic from the start, so an old backlog is processed first. Use `--spring.kafka.consumer.group-id=my-test-1` for a fresh group. Stop the broker with `docker rm -f sftr-kafka`.
+
+## 5a. Message publisher (feeding Kafka)
+
+The `publisher` profile sends generated trade messages to the topic `sftr.kafka.topic`, so you can load-test the consumer. It has no consumer and no web server. It is a Camel timer route (`MessagePublisherRoute`) that calls the bean `messagePublisher`: `next` builds the message, then after the send `afterSend` counts it and applies the limits.
+
+Start the broker (section 5) and the stub (section 6), then run the engine in `kafka` mode in one terminal and the publisher in another:
+
+```
+java -jar target/sftr-mapping-engine.jar --spring.profiles.active=publisher --spring.kafka.bootstrap-servers=localhost:19092 --sftr.publisher.rate-per-minute=120 --sftr.publisher.max-messages=500
+```
+
+| Setting (`sftr.publisher.`) | Default | Meaning |
+| --- | --- | --- |
+| `rate-per-minute` | 60 | Messages per minute. 120 is one every 500 ms. `0` means as fast as possible. |
+| `max-messages` | 0 | Stop after this many messages. `0` means no limit. |
+| `duration` | 0s | Stop after this long, counted from the first message, for example `30s` or `2m`. `0` means no limit. |
+| `topic` | `${sftr.kafka.topic}` | Topic to publish to. |
+| `trade-types`, `legal-entities`, `counterparty-ids` | see `application.yml` | Values used in turn: message 1 uses the first of each list, message 2 the second, and so on. A run is repeatable. |
+
+The publisher stops at the **first** limit it reaches, logs `Publisher finished: <n> messages in <ms> ms`, and the application exits. With no limit it runs until you stop it. A negative number or an empty list stops the start-up with a message naming the key.
+
+Each message looks like `{"trade_ref":"PUB-1","trade_type":"PO","bmoLegalEntity":"LDNBB01","counterpartyId":"CP1"}`. The default counterparty ids (`CP1` to `CP3`) are normal ids for the stub, so every row is written. To test rejects, add `FAIL4XX` to `--sftr.publisher.counterparty-ids`.
+
+| Goal | Arguments |
+| --- | --- |
+| 500 messages, one per second | `--sftr.publisher.max-messages=500` |
+| 2 minutes at 30 per minute | `--sftr.publisher.rate-per-minute=30 --sftr.publisher.duration=2m` |
+| 10,000 messages as fast as possible | `--sftr.publisher.rate-per-minute=0 --sftr.publisher.max-messages=10000` |
+| 1,000 messages or 1 minute, whichever comes first | `--sftr.publisher.rate-per-minute=600 --sftr.publisher.max-messages=1000 --sftr.publisher.duration=1m` |
+
+In IntelliJ, copy the rest run configuration and set the active profile to `publisher`. With no broker running the Kafka client keeps logging connection warnings and nothing is sent.
 
 ## 6. The reference-data stub
 
@@ -215,7 +249,7 @@ For time-based batching use `--sftr.output.write-mode=INTERVAL --sftr.output.bat
 | One file instead of daily files | `--sftr.output.rollover=NONE` | `data/sftr-report.csv` |
 | Another output folder | `--sftr.output.file=C:/temp/out/report.csv` | the folder is created; the date is added to the name |
 | File mode | `--spring.profiles.active=file --sftr.input.file=samples/input.txt` | the app processes the file and exits; `samples/input.txt` has 4 good rows and 2 bad lines |
-| A bad rule | edit `sftr-field-mappings.json`, for example misspell an `outputField`, then restart | the app does not start and names the rule |
+| A bad rule | edit `mapper/sftr-field-mappings.json`, for example misspell an `outputField`, then restart | the app does not start and names the rule |
 
 ## 8. Run and debug in IntelliJ
 
@@ -248,7 +282,9 @@ For time-based batching use `--sftr.output.write-mode=INTERVAL --sftr.output.bat
 | A lambda | the lambda body in `SftrMappingFunctions`, for example `CP_CpSide` |
 | When a row is written | `PerRecordSink.append`, `BatchingSink.append`, `BatchingSink.flushLocked` |
 | Why a message was rejected | `RejectWriter.write` (the exception is the one just caught in `RecordPipeline.handle`) |
-| Kafka commits | `KafkaIngestRoute.handle`, `OffsetCommitter.release`, `OffsetCommitter.commitReleased` |
+| Kafka consumption | `KafkaMessageHandler.handle` (the `bean` step of `routes/kafka-ingest.camel.yaml`) |
+| Kafka commits | `OffsetCommitProcessor.process` (the `process` step), `OffsetCommitter.release`, `OffsetCommitter.commitReleased` |
+| Publisher | `MessagePublisher.next`, `MessagePublisher.afterSend`, `TradeMessageGenerator.message` |
 
 **Debugging tips**
 

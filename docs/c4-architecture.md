@@ -28,7 +28,7 @@ flowchart LR
     kafka[("Kafka broker<br/>topic trade-messages")] -->|messages| engine
     engine -->|commit offsets after the write| kafka
     file["Input file<br/>.txt JSON lines or .csv"] -->|messages| engine
-    cfg["Config<br/>sftr-field-mappings.json<br/>application.yml<br/>write-mode, batch-size, batch-interval,<br/>rollover, file-zone"] -.->|loaded at startup| engine
+    cfg["Config<br/>mapper/sftr-field-mappings.json<br/>application.yml<br/>write-mode, batch-size, batch-interval,<br/>rollover, file-zone"] -.->|loaded at startup| engine
     engine["<b>SFTR Mapping Engine</b><br/>Spring Boot application<br/>Camel route, one consumer<br/>maps each message to a row<br/>writes per record or in batches<br/>one file per day"]
     engine <-->|enrich| ref["Reference data<br/>HTTP service, JSON"]
     engine -->|rows| csv["SFTR CSV report<br/>sftr-report-yyyy-mm-dd.csv"]
@@ -44,7 +44,7 @@ Solid arrows run per message; dashed arrows run at startup, on the timer, or by 
 ```mermaid
 flowchart TB
     subgraph engine["SFTR Mapping Engine (Spring Boot application)"]
-        route["KafkaIngestRoute<br/>Camel route, one consumer<br/>manual offset commit"]
+        route["routes/kafka-ingest.camel.yaml<br/>Camel YAML route, one consumer<br/>bean KafkaMessageHandler, process OffsetCommitProcessor"]
         legacy["KafkaRecordListener<br/>previous listener<br/>PER_RECORD only"]
         file["FileInputRunner<br/>reads .txt or .csv lines<br/>flushes at end of file"]
         rest["TestMessageController<br/>POST /api/test-message<br/>rest or both profile"]
@@ -201,8 +201,8 @@ classDiagram
         release(partition, offset, commit)
         commitReleased()
     }
-    class KafkaIngestRoute {
-        <<RouteBuilder>>
+    class KafkaMessageHandler {
+        <<bean called by the YAML route>>
         handle(exchange)
     }
     class SftrCsvWriter {
@@ -222,15 +222,15 @@ classDiagram
     RejectWriter ..> OutputFileResolver
     OutputFileResolver ..> OutputProperties
     ReportDay ..> OutputProperties
-    KafkaIngestRoute ..> RecordPipeline
-    KafkaIngestRoute ..> OffsetCommitter
+    KafkaMessageHandler ..> RecordPipeline
+    KafkaMessageHandler ..> OffsetCommitter
 ```
 
 ## Dynamic view 1: `PER_RECORD`, one message
 
 ```mermaid
 sequenceDiagram
-    participant In as KafkaIngestRoute
+    participant In as KafkaMessageHandler
     participant P as RecordPipeline
     participant T as MessageTransformer
     participant R as RefDataClient
@@ -258,7 +258,7 @@ Offsets 10 and 11 stay uncommitted while their rows wait in the buffer. The comm
 ```mermaid
 sequenceDiagram
     participant K as Kafka
-    participant R as KafkaIngestRoute
+    participant R as KafkaMessageHandler
     participant P as RecordPipeline
     participant S as BatchingSink
     participant F as CSV file
@@ -286,7 +286,7 @@ The rejected message goes to the rejects file at once, but its offset waits for 
 
 ```mermaid
 sequenceDiagram
-    participant R as KafkaIngestRoute
+    participant R as KafkaMessageHandler
     participant S as BatchingSink
     participant J as RejectWriter
     participant X as Flusher (timer)
