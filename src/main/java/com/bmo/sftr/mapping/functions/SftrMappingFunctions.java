@@ -1,5 +1,11 @@
 package com.bmo.sftr.mapping.functions;
 
+import static com.bmo.sftr.mapping.model.OutputColumns.CP_BRANCH_OF_REP_CP;
+import static com.bmo.sftr.mapping.model.OutputColumns.CP_CP_SIDE;
+import static com.bmo.sftr.mapping.model.OutputColumns.CP_NATURE_OF_REP_CP;
+import static com.bmo.sftr.mapping.model.OutputColumns.CP_REP_CP;
+import static com.bmo.sftr.mapping.model.OutputColumns.CP_SEC_OF_REP_CP;
+
 import com.bmo.sftr.mapping.model.MappingFunction;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,22 +20,22 @@ public class SftrMappingFunctions {
     public SftrMappingFunctions() {
 
         // ===== Trade =====
-        register("CP_CpSide", (msg, ctx) ->
+        register(CP_CP_SIDE, (msg, ctx) ->
                 ctx.constants().lookup("cpSide", MappingFunction.text(msg, "trade_type")));
 
         // ===== Reporting counterparty (reference-data enrichment) =====
-        register("CP_RepCp", (msg, ctx) ->
+        register(CP_REP_CP, (msg, ctx) ->
                 RefDataExtractors.partyLei(ctx.refData(), ctx.constants()));
 
-        register("CP_NatureOfRepCp", (msg, ctx) -> firstNonBlank(
+        register(CP_NATURE_OF_REP_CP, (msg, ctx) -> firstNonBlank(
                 RefDataExtractors.partyNature(ctx.refData(), ctx.constants()),
                 ctx.constants().value("natureOfRepCpDefault")));
 
-        register("CP_SecOfRepCp", (msg, ctx) ->
+        register(CP_SEC_OF_REP_CP, (msg, ctx) ->
                 RefDataExtractors.partySector(ctx.refData(), ctx.constants()));
 
         // ===== Branch logic =====
-        register("CP_BranchOfRepCp", (msg, ctx) -> {
+        register(CP_BRANCH_OF_REP_CP, (msg, ctx) -> {
             String legalEntity = MappingFunction.text(msg, "bmoLegalEntity");
             return ctx.constants().startsWithAny("londonLegalEntityPrefixes", legalEntity)
                     ? ctx.constants().value("londonBranchCountry")
