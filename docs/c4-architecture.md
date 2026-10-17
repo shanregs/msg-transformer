@@ -11,7 +11,8 @@ flowchart LR
     op(["Operator<br/>runs the app"]) -->|starts and configures| engine
     op -->|optional: POST /api/test-message, rest or both profile| engine
     op -->|optional: publisher profile, rate or count or duration| engine
-    engine -.->|publisher mode: generated test messages| kafka
+    op -->|optional: POST /api/kafka-message, rest or both profile| engine
+    engine -.->|publisher mode and /api/kafka-message: test messages| kafka
     kafka[("Kafka broker<br/>topic trade-messages")] -->|messages| engine
     engine -->|commit offsets after rows are on disk| kafka
     file["Input file<br/>.txt JSON lines or .csv"] -->|messages| engine
@@ -52,6 +53,7 @@ flowchart TB
         legacy["KafkaRecordListener<br/>previous listener<br/>PER_RECORD only"]
         file["FileInputRunner<br/>reads .txt or .csv lines<br/>flushes at end of file"]
         rest["TestMessageController<br/>POST /api/test-message<br/>rest or both profile"]
+        kpub["KafkaPublishController<br/>POST /api/kafka-message<br/>KafkaTemplate, rest or both profile"]
         pipe["<b>RecordPipeline</b><br/>one message at a time<br/>day, transform, append or reject<br/>runs the durable callback"]
         day["ReportDay<br/>one clock reading per message<br/>midnight in Asia/Kolkata"]
         tf["MessageTransformer<br/>parse, enrich, map"]
@@ -74,6 +76,7 @@ flowchart TB
         pub["MessagePublisher<br/>next: build message<br/>afterSend: count, apply limits, exit"]
         gen["TradeMessageGenerator<br/>message n from the configured lists"]
         pprops["PublisherProperties<br/>rate-per-minute, max-messages,<br/>duration, validated at startup"]
+        pub_topic(["Kafka topic<br/>(outside the engine)"])
 
         route -->|step 1| handler
         handler -->|handle| pipe
@@ -102,6 +105,7 @@ flowchart TB
         loader -.->|compiled| proc
         fns -.->|find by name| loader
         cols -.->|names used for registration| fns
+        kpub -.->|publish to the topic, outside the engine| pub_topic
         ptimer -->|each tick| pub
         pub -->|message n| gen
         pprops -.->|limits and period| ptimer
@@ -245,6 +249,30 @@ classDiagram
     KafkaMessageHandler ..> RecordPipeline
     KafkaMessageHandler ..> OffsetCommitter
     OffsetCommitProcessor ..> OffsetCommitter
+```
+
+### REST endpoints
+
+```mermaid
+classDiagram
+    class TestMessageController {
+        <<RestController>>
+        post(body, flush) Result
+    }
+    class KafkaPublishController {
+        <<RestController>>
+        publish(body, topic, key) ResponseEntity
+    }
+    class KafkaTemplate {
+        <<Spring Kafka>>
+        send(topic, key, value) Future
+    }
+    class RecordPipeline {
+        handle(json, sourceRef, whenDurable)
+    }
+
+    TestMessageController ..> RecordPipeline : runs the flow directly
+    KafkaPublishController ..> KafkaTemplate : sends, waits for the acknowledgement
 ```
 
 ### Publisher and column names
@@ -408,7 +436,30 @@ sequenceDiagram
     Note over D,M: with duration set, the deadline timer<br/>calls finish() on time, even between ticks
 ```
 
-## Dynamic view 5: how the Kafka route starts
+## Dynamic view 5: REST to Kafka to CSV (`both` mode)
+
+`POST /api/kafka-message` only puts the message on the topic. The consumer then handles it exactly like a message from any producer.
+
+```mermaid
+sequenceDiagram
+    participant U as Caller (curl, Postman)
+    participant KP as KafkaPublishController
+    participant K as Kafka topic
+    participant R as YAML route + KafkaMessageHandler
+    participant P as RecordPipeline
+    participant F as CSV file
+
+    U->>KP: POST /api/kafka-message (body, topic?, key?)
+    KP->>K: send, wait for the acknowledgement
+    K-->>KP: partition, offset
+    KP-->>U: 200 {topic, partition, offset}
+    K->>R: message (consumer poll)
+    R->>P: handle(json, ref, whenDurable)
+    P->>F: row written (per the write mode)
+    Note over KP,U: no broker or no answer in time: 503<br/>empty body: 400
+```
+
+## Dynamic view 6: how the Kafka route starts
 
 ```mermaid
 sequenceDiagram

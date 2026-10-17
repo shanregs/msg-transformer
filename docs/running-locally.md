@@ -292,7 +292,7 @@ For time-based batching use `--sftr.output.write-mode=INTERVAL --sftr.output.bat
 
 | To see | Breakpoint |
 | --- | --- |
-| A REST request arrive | `TestMessageController.post` |
+| A REST request arrive | `TestMessageController.post`, `KafkaPublishController.publish` |
 | The whole message path | `RecordPipeline.handle` (every entry point goes through it) |
 | Parsing and the reference-data call | `MessageTransformer.transform`, `RefDataClient.fetch` |
 | One rule running | `RecordProcessor.process`, inside the loop. A conditional breakpoint on `m.column().equals("CP_CpSide")` stops on one rule only |
