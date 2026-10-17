@@ -23,7 +23,7 @@ public interface ReportSink extends AutoCloseable {
 
     /**
      * Runs {@code action} once every row accepted so far is in the file; at once if none is waiting.
-     * Used for messages that produce no row (rejects) so their offsets are not released ahead of earlier rows.
+     * Left over from the Kafka version, where it held back offsets; nothing calls it in the database flow.
      */
     void whenDurable(Runnable action);
 

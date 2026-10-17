@@ -1,37 +1,23 @@
 spring:
   application:
     name: sftr-mapping-engine
-  main:
-    web-application-type: none        # no web server
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: sftr-mapping-engine
-      auto-offset-reset: earliest
-      enable-auto-commit: false       # offsets are acknowledged by the listener after the row is written
-      max-poll-records: 1             # one message at a time
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-    producer:                         # used by POST /api/kafka-message (rest or both profile)
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-      properties:
-        max.block.ms: 5000            # with no broker the call fails after 5 s instead of 60 s
-    listener:
-      ack-mode: manual_immediate
+  datasource:                         # local Postgres, database "sftr" (see samples/db)
+    url: ${SFTR_DB_URL:jdbc:postgresql://localhost:5432/sftr}
+    username: ${SFTR_DB_USER:postgres}
+    password: ${SFTR_DB_PASSWORD:}    # set the environment variable SFTR_DB_PASSWORD; never commit a password
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none                  # the trade table belongs to another application; this one only reads it
 
-camel:
-  main:
-    # Camel's Kafka consumer threads are daemon threads, so without this the JVM exits right after startup.
-    # Follows sftr.kafka.enabled, so the file mode still exits when the file has been processed.
-    run-controller: ${sftr.kafka.enabled:true}
-    routes-include-pattern: classpath:routes/*.yaml    # Camel YAML routes (Kafka consumption)
+server:
+  port: 9090                          # 8080 is often taken by other applications
 
-springdoc:                          # Swagger UI at /swagger-ui.html, only with the rest or both profile
+springdoc:                            # Swagger UI at /swagger-ui.html, OpenAPI document at /v3/api-docs
   api-docs:
-    enabled: ${sftr.rest.enabled:false}
+    enabled: true
   swagger-ui:
-    enabled: ${sftr.rest.enabled:false}
+    enabled: true
 
 logging:
   level:
@@ -41,23 +27,16 @@ sftr:
   mapping:
     config: classpath:mapper/sftr-field-mappings.json
 
-  rest:
-    enabled: false                    # set by the profiles: rest or both turn on POST /api/test-message and POST /api/kafka-message
-    publish-timeout: 10s              # POST /api/kafka-message waits this long for the broker to acknowledge
-
-  ingest: camel                       # camel (Camel Kafka route, needed for batch write modes) | spring-kafka (previous listener, PER_RECORD only)
-
-  kafka:
-    enabled: true                     # set by the profiles: kafka or both = on, rest or file = off
-    topic: trade-messages             # use ONE partition if global order matters
+  db:
+    event: RECEIVED                   # only rows with this event are processed
+    page-size: 500                    # rows fetched per query
 
   output:
-    file: ./data/sftr-report.csv      # rows are appended, in arrival order
-    rollover: DAILY                   # DAILY: a new file each day (sftr-report-2026-10-16.csv, same for rejects); NONE: one file
+    file: ./data/sftr-report.csv      # rows are appended, in the order the rows were read
+    rollover: DAILY                   # DAILY: a new file each day (sftr-report-2026-10-16.csv); NONE: one file
     file-zone: Asia/Kolkata           # the time zone whose midnight starts a new day
-    rejects-file:                     # default: <report file>.rejects
-    write-mode: PER_RECORD            # PER_RECORD: open, append, close per message | COUNT: batch of batch-size rows | INTERVAL: batch every batch-interval
-    batch-size: 10                    # COUNT: write when this many rows are waiting
+    write-mode: COUNT                 # PER_RECORD: open, append, close per row | COUNT: batch of batch-size rows | INTERVAL: batch every batch-interval
+    batch-size: 100                   # COUNT: write when this many rows are waiting (the last batch is written at the end of a run)
     batch-interval: 5m                # INTERVAL: write when the oldest waiting row is this old
     max-buffered-records: 1000        # safety cap on rows held in memory
     file-date:                        # optional ISO date; replaces today in the rows and the file names
@@ -94,16 +73,3 @@ sftr:
       cpSide:
         GIVE: [PO, DP, RP, TP, BP, BC, CLD, B, RPO]
         TAKE: [PI, DV, RV, TV, LP, LC, CLR, L, RPI]
-
-  publisher:                          # message publisher, active with the "publisher" profile
-    topic: ${sftr.kafka.topic}
-    rate-per-minute: 60               # messages per minute; 0 = as fast as possible
-    max-messages: 0                   # stop after this many; 0 = no limit
-    duration: 0s                      # stop after this long; 0 = no limit (stops at the first limit reached)
-    trade-types: [PO, PI, RP, RV]     # used in turn
-    legal-entities: [LDNBB01, TORBB02]
-    counterparty-ids: [CP1, CP2, CP3]
-
-  input:
-    # file: ./data/input.csv          # set to read messages from a .txt/.csv file instead of Kafka (use the "file" profile)
-    delimiter: ","                    # CSV input only

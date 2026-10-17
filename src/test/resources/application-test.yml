@@ -1,0 +1,9 @@
+# Tests that start the Spring context use an in-memory H2 database instead of the local Postgres.
+spring:
+  datasource:
+    url: jdbc:h2:mem:sftr;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop           # creates the trade table from the entity, only in tests

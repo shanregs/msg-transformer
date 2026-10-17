@@ -1,4 +1,4 @@
-# Requests for the test endpoint. Start the app with the rest or both profile and the stub
+# Requests for the REST endpoints. Start the app and the stub
 # (python samples/refdata-stub.py). See docs/running-locally.md. Run a request with the green arrow in the gutter.
 # Change @host if the app is not on port 9090.
 @host = http://localhost:9090
@@ -94,27 +94,27 @@ Content-Type: application/json
 }
 
 ### B1 malformed JSON
-# HTTP 200 with outcome REJECTED. The rejects file gets: rest-<n> TAB Malformed JSON.
+# HTTP 200 with outcome FAILED and reason Malformed JSON. Nothing is written.
 POST {{host}}/api/test-message
 Content-Type: application/json
 
 {not json
 
 ### B2 empty body
-# The rejects file gets: rest-<n> TAB Empty message.
+# HTTP 200 with outcome FAILED and reason Empty message.
 POST {{host}}/api/test-message
 Content-Type: application/json
 
 
 ### B3 JSON array, not an object
-# The rejects file gets: rest-<n> TAB Not a JSON object.
+# HTTP 200 with outcome FAILED and reason Not a JSON object.
 POST {{host}}/api/test-message
 Content-Type: application/json
 
 [1, 2]
 
 ### C1 reference data answers 400
-# A 4xx is never retried. The rejects file gets: Reference data HTTP 400. Needs the stub (samples/refdata-stub.py).
+# A 4xx is never retried. HTTP 200 with outcome FAILED and reason Reference data HTTP 400. Needs the stub (samples/refdata-stub.py).
 POST {{host}}/api/test-message
 Content-Type: application/json
 
@@ -127,7 +127,7 @@ Content-Type: application/json
 }
 
 ### C2 reference data answers 503
-# A 5xx is retried (3 attempts, short backoff, under a second) and then rejected: Reference data unavailable.
+# A 5xx is retried (3 attempts, short backoff, under a second) and then fails: outcome FAILED, reason Reference data unavailable.
 POST {{host}}/api/test-message
 Content-Type: application/json
 
@@ -140,7 +140,7 @@ Content-Type: application/json
 }
 
 ### C3 reference data too slow
-# The stub waits 8 seconds, longer than the 5 second read timeout. Three attempts take about 15 seconds, then: Reference data unavailable. Be patient.
+# The stub waits 8 seconds, longer than the 5 second read timeout. Three attempts take about 15 seconds, then outcome FAILED, reason Reference data unavailable. Be patient.
 POST {{host}}/api/test-message
 Content-Type: application/json
 
@@ -218,22 +218,10 @@ Content-Type: application/json
 }
 
 
-### K1 publish to Kafka (needs a broker; the topic defaults to sftr.kafka.topic)
-# In both mode the Kafka consumer picks this up and writes a row, like any Kafka message.
-# Answer: {"topic":"trade-messages","partition":0,"offset":<n>}. Without a broker: 503 after about 5 seconds.
-POST {{host}}/api/kafka-message
-Content-Type: application/json
+### T1 process the RECEIVED rows of the trade table
+# Needs the Postgres table (samples/db) and the stub. Reads the RECEIVED rows in id order, maps each and writes the CSV.
+# With the sample rows: read 5, written 3, failed 2 (the failures are in the application log). Add ?limit=2 to stop early.
+POST {{host}}/api/trades/process
 
-{
-  "trade_ref": "K1",
-  "trade_type": "PO",
-  "bmoLegalEntity": "LDNBB01",
-  "counterpartyId": "CP1",
-  "group_cd": "G1"
-}
-
-### K2 publish to another topic with a key
-POST {{host}}/api/kafka-message?topic=other-topic&key=k1
-Content-Type: application/json
-
-{ "trade_ref": "K2", "trade_type": "PI" }
+### T2 process at most 2 rows
+POST {{host}}/api/trades/process?limit=2

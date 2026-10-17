@@ -11,7 +11,6 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * Settings under {@code sftr.output}. Invalid values fail the start with a message naming the key.
  *
  * @param file               the CSV report; with {@code rollover: DAILY} the date is added before the extension
- * @param rejectsFile        rejected messages; blank means {@code <report file>.rejects}
  * @param fileDate           ISO date that replaces today's date in the rows and the file names; blank means today
  * @param rollover           whether a new file is started each day, see {@link Rollover}
  * @param fileZone           the time zone whose midnight starts a new day
@@ -23,7 +22,6 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "sftr.output")
 public record OutputProperties(
         String file,
-        String rejectsFile,
         String fileDate,
         @DefaultValue("DAILY") Rollover rollover,
         @DefaultValue("Asia/Kolkata") ZoneId fileZone,
@@ -42,7 +40,7 @@ public record OutputProperties(
         COUNT
     }
 
-    /** Whether the report and rejects files are split by day. */
+    /** Whether the report file is split by day. */
     public enum Rollover {
         /** One file per day: {@code sftr-report-2026-10-16.csv}. A file is created when its first row arrives. */
         DAILY,

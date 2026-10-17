@@ -12,7 +12,6 @@ import com.bmo.sftr.mapping.output.OutputFileResolver;
 import com.bmo.sftr.mapping.output.OutputProperties;
 import com.bmo.sftr.mapping.output.OutputProperties.Rollover;
 import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
-import com.bmo.sftr.mapping.output.RejectWriter;
 import com.bmo.sftr.mapping.output.ReportDay;
 import com.bmo.sftr.mapping.output.ReportSinkConfig;
 import com.bmo.sftr.mapping.output.SftrCsvWriter;
@@ -22,8 +21,6 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.ClassPathResource;
@@ -44,21 +41,19 @@ class WriteModesGoldenTest {
                  "find_sftr_party_sector":{"values":{"natureOfReportingCounterparty":"C","sector":"CDTI"}}}"""));
         RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         Path out = dir.resolve(mode + ".csv");
-        OutputProperties props = new OutputProperties(out.toString(), null, "2026-01-01", Rollover.NONE, KOLKATA,
+        OutputProperties props = new OutputProperties(out.toString(), "2026-01-01", Rollover.NONE, KOLKATA,
                 mode, 3, Duration.ofMinutes(30), 1000);
         Clock clock = Clock.system(KOLKATA);
         OutputFileResolver files = new OutputFileResolver(props);
         var sink = new ReportSinkConfig().reportSink(props, TestSupport.csvWriter(), files, clock);
         RecordPipeline pipeline = new RecordPipeline(
                 new MessageTransformer(refData, processor, TestSupport.realConstants(), TestSupport.MAPPER),
-                sink, new RejectWriter(files), new ReportDay(props, clock));
+                sink, new ReportDay(props, clock));
 
         String line = Files.readString(new ClassPathResource("golden/input.jsonl").getFile().toPath()).strip();
-        List<String> done = new ArrayList<>();
-        for (int i = 0; i < MESSAGES; i++) pipeline.handle(line, "t-0@" + i, () -> done.add("x"));
+        for (int i = 0; i < MESSAGES; i++) pipeline.handle(line, "t:" + i);
         pipeline.flush();                                  // end of run: write what is still waiting
         sink.close();
-        assertThat(done).as("every message is reported durable once").hasSize(MESSAGES);
         return Files.readString(out);
     }
 

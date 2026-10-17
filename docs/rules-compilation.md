@@ -228,7 +228,7 @@ sequenceDiagram
 ```
 
 - Rules run **in config order**, one after another, on one thread. A rule cannot see another rule's result; they all read the message and the context.
-- If a rule throws, the whole message fails with `Mapping failed for column <name>` and the message goes to the rejects file. No half-filled row is written.
+- If a rule throws, the whole message fails with `Mapping failed for column <name>` and the record is logged as failed and skipped (for a table run, the run carries on with the next row). No half-filled row is written.
 - Skipped rules are never called: their fields stay `null` and the CSV cell is empty.
 
 ## 8. Worked example: the seed configuration

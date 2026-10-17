@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import com.bmo.sftr.mapping.TestSupport;
 import com.bmo.sftr.mapping.engine.MappingConfigLoaderTest;
 import com.bmo.sftr.mapping.engine.RecordProcessor;
-import com.bmo.sftr.mapping.output.SftrCsvWriter;
 import com.bmo.sftr.mapping.refdata.RefDataClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,19 +32,17 @@ class RecordPipelineTest {
 
     private final RefDataClient refData = mock(RefDataClient.class);
     private Path out;
-    private Path rejects;
 
     @BeforeEach
     void setUp() {
         out = dir.resolve("out.csv");
-        rejects = dir.resolve("out.csv.rejects");
         when(refData.fetch(any())).thenReturn(REF);
     }
 
     private RecordPipeline pipeline() {
         RecordProcessor processor = new RecordProcessor(MappingConfigLoaderTest.loader("mapper/sftr-field-mappings.json"));
         return new RecordPipeline(refData, processor, TestSupport.csvWriter(), TestSupport.realConstants(),
-                TestSupport.MAPPER, out.toString(), "", "2026-01-01");
+                TestSupport.MAPPER, out.toString(), "2026-01-01");
     }
 
     private static String msg(String ref, String tradeType) {
@@ -60,78 +57,68 @@ class RecordPipelineTest {
     @Test
     void rowsAreWrittenInArrivalOrderAndVisibleImmediately() throws Exception {
         RecordPipeline p = pipeline();
-        assertThat(p.handle(msg("1", "PO"), "t-0@0")).isEqualTo(RecordPipeline.Outcome.WRITTEN);
-        assertThat(sides()).containsExactly("GIVE");               // flushed before handle() returned
-        p.handle(msg("2", "PI"), "t-0@1");
-        p.handle(msg("3", "PO"), "t-0@2");
-        p.handle(msg("4", "PI"), "t-0@3");
+        p.handle(msg("1", "PO"), "t:1");
+        assertThat(sides()).containsExactly("GIVE");               // written before handle() returned
+        p.handle(msg("2", "PI"), "t:2");
+        p.handle(msg("3", "PO"), "t:3");
+        p.handle(msg("4", "PI"), "t:4");
         assertThat(sides()).containsExactly("GIVE", "TAKE", "GIVE", "TAKE");
-        assertThat(rejects).doesNotExist();
     }
 
     @Test
-    void badMessageIsRejectedAndTheNextOneStillFollowsInOrder() throws Exception {
+    void badMessageThrowsWithAShortReasonAndTheNextOneStillFollowsInOrder() throws Exception {
         RecordPipeline p = pipeline();
-        p.handle(msg("1", "PO"), "t-0@0");
-        assertThat(p.handle("{not json SECRET-DATA", "t-0@1")).isEqualTo(RecordPipeline.Outcome.REJECTED);
-        assertThat(p.handle("", "t-0@2")).isEqualTo(RecordPipeline.Outcome.REJECTED);
-        assertThat(p.handle(null, "t-0@3")).isEqualTo(RecordPipeline.Outcome.REJECTED);
-        assertThat(p.handle("[1,2]", "t-0@4")).isEqualTo(RecordPipeline.Outcome.REJECTED);
-        p.handle(msg("6", "PI"), "t-0@5");
+        p.handle(msg("1", "PO"), "t:1");
+        assertThatThrownBy(() -> p.handle("{not json SECRET-DATA", "t:2"))
+                .isInstanceOf(RecordProcessingException.class)
+                .hasMessage("Malformed JSON")                      // never the content
+                .extracting(e -> ((RecordProcessingException) e).sourceRef()).isEqualTo("t:2");
+        assertThatThrownBy(() -> p.handle("", "t:3")).isInstanceOf(RecordProcessingException.class)
+                .hasMessageStartingWith("Empty");
+        assertThatThrownBy(() -> p.handle(null, "t:4")).isInstanceOf(RecordProcessingException.class);
+        assertThatThrownBy(() -> p.handle("[1,2]", "t:5")).isInstanceOf(RecordProcessingException.class)
+                .hasMessageStartingWith("Not a JSON");
+        p.handle(msg("6", "PI"), "t:6");
 
         assertThat(sides()).containsExactly("GIVE", "TAKE");
-        List<String> lines = Files.readAllLines(rejects);
-        assertThat(lines).hasSize(4);
-        assertThat(lines.get(0)).isEqualTo("t-0@1\tMalformed JSON");
-        assertThat(lines.get(1)).startsWith("t-0@2\t");
-        assertThat(String.join("\n", lines)).doesNotContain("SECRET-DATA");
+        assertThat(dir.resolve("out.csv.rejects")).doesNotExist();   // there is no rejects file
     }
 
     @Test
-    void referenceData4xxRejectsTheMessage() throws Exception {
+    void referenceData4xxFailsTheRecord() {
         when(refData.fetch(any())).thenThrow(HttpClientErrorException.create(
                 HttpStatus.BAD_REQUEST, "Bad Request", null, "body with data".getBytes(), null));
-        assertThat(pipeline().handle(msg("1", "PO"), "t-0@0")).isEqualTo(RecordPipeline.Outcome.REJECTED);
-        assertThat(Files.readString(rejects)).isEqualTo("t-0@0\tReference data HTTP 400\n");
+        assertThatThrownBy(() -> pipeline().handle(msg("1", "PO"), "t:1"))
+                .isInstanceOf(RecordProcessingException.class).hasMessage("Reference data HTTP 400");
     }
 
     @Test
-    void referenceDataOutageRejectsThatMessageAndProcessingContinues() throws Exception {
+    void referenceDataOutageFailsThatRecordAndProcessingContinues() throws Exception {
         RecordPipeline p = pipeline();
-        p.handle(msg("1", "PO"), "t-0@0");
+        p.handle(msg("1", "PO"), "t:1");
 
         when(refData.fetch(any())).thenThrow(new RefDataClient.UnavailableException("down", null));
-        assertThat(p.handle(msg("2", "PI"), "t-0@1")).isEqualTo(RecordPipeline.Outcome.REJECTED);
-        assertThat(Files.readString(rejects)).isEqualTo("t-0@1\tReference data unavailable\n");
+        assertThatThrownBy(() -> p.handle(msg("2", "PI"), "t:2"))
+                .isInstanceOf(RecordProcessingException.class).hasMessage("Reference data unavailable");
 
-        doReturn(REF).when(refData).fetch(any());                  // service is back: next message is fine
-        p.handle(msg("3", "PO"), "t-0@2");
+        doReturn(REF).when(refData).fetch(any());                  // service is back: next record is fine
+        p.handle(msg("3", "PO"), "t:3");
         assertThat(sides()).containsExactly("GIVE", "GIVE");
     }
 
     @Test
     void restartAppendsWithoutASecondHeader() throws Exception {
         RecordPipeline first = pipeline();
-        first.handle(msg("1", "PO"), "t-0@0");
+        first.handle(msg("1", "PO"), "t:1");
         first.close();
 
         RecordPipeline second = pipeline();
-        second.handle(msg("2", "PI"), "t-0@1");
+        second.handle(msg("2", "PI"), "t:2");
         second.close();
 
         List<String> lines = Files.readAllLines(out);
         assertThat(lines).hasSize(3);
         assertThat(lines.stream().filter(l -> l.startsWith("IM_SubmitterID,")).count()).isEqualTo(1);
         assertThat(sides()).containsExactly("GIVE", "TAKE");
-    }
-
-    @Test
-    void callbackRunsForWrittenAndRejectedMessagesOnceTheyAreDurable() throws Exception {
-        RecordPipeline p = pipeline();
-        List<String> done = new java.util.ArrayList<>();
-        p.handle(msg("1", "PO"), "t-0@0", () -> done.add("written"));
-        p.handle("{not json", "t-0@1", () -> done.add("rejected"));
-        assertThat(done).containsExactly("written", "rejected");
-        assertThat(sides()).containsExactly("GIVE");
     }
 }

@@ -8,7 +8,6 @@ import com.bmo.sftr.mapping.output.OutputProperties;
 import com.bmo.sftr.mapping.output.OutputProperties.Rollover;
 import com.bmo.sftr.mapping.output.OutputProperties.WriteMode;
 import com.bmo.sftr.mapping.output.PerRecordSink;
-import com.bmo.sftr.mapping.output.RejectWriter;
 import com.bmo.sftr.mapping.output.ReportDay;
 import com.bmo.sftr.mapping.output.ReportSink;
 import com.bmo.sftr.mapping.output.SftrCsvWriter;
@@ -24,44 +23,39 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Handles ONE message at a time, on the calling thread: {@link MessageTransformer} builds the row,
- * the {@link ReportSink} writes it (or buffers it), and a message that cannot be processed goes to the {@link RejectWriter}.
- * Rows therefore appear in exactly the order messages are handed in.
+ * Handles ONE record at a time, on the calling thread: {@link MessageTransformer} builds the row and the
+ * {@link ReportSink} writes it (or buffers it). Rows therefore appear in exactly the order records are handed in.
  *
- * Calls are serialised by a lock, because the sink and the reject writer own output files: the Kafka consumer
- * and the optional REST test endpoint can both call in, and rows still come out in the order calls were made.
+ * Calls are serialised by a lock, because the sink owns the output file: the database run and the optional
+ * REST test endpoint can both call in, and rows still come out in the order calls were made.
  *
  * <ul>
- *   <li>Written: the row was handed to the sink (with the default write mode it is on disk before this method returns).</li>
- *   <li>Rejected: the message could not be processed (malformed JSON, reference data failure after
- *       its own retries, mapping error). A line goes to the rejects file and handling carries on.</li>
- *   <li>IOException: the output or rejects file could not be written; the caller logs it and moves on.</li>
+ *   <li>Returns normally: the row was handed to the sink (with a batch write mode it may still be waiting
+ *       until the batch is full or {@link #flush()} is called).</li>
+ *   <li>{@link RecordProcessingException}: the record could not be processed (malformed JSON, reference data
+ *       failure after its own retries, mapping error). Nothing is written; the caller logs it and moves on.</li>
+ *   <li>{@link IOException}: the output file could not be written; the caller logs it and moves on.</li>
  * </ul>
  */
 @Service
 public class RecordPipeline {
 
-    public enum Outcome { WRITTEN, REJECTED }
-
     private final MessageTransformer transformer;
     private final ReportSink sink;
-    private final RejectWriter rejects;
     private final ReportDay reportDay;
     private final ReentrantLock lock = new ReentrantLock();
 
     @Autowired
-    public RecordPipeline(MessageTransformer transformer, ReportSink sink, RejectWriter rejects, ReportDay reportDay) {
+    public RecordPipeline(MessageTransformer transformer, ReportSink sink, ReportDay reportDay) {
         this.transformer = transformer;
         this.sink = sink;
-        this.rejects = rejects;
         this.reportDay = reportDay;
     }
 
     /** Builds the collaborators by hand, one file with the configured name (no daily files). */
     RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
-                   SftrConstants constants, ObjectMapper mapper, String outputFile, String rejectsFile,
-                   String configuredFileDate) {
-        this(refData, processor, csvWriter, constants, mapper, new OutputProperties(outputFile, rejectsFile,
+                   SftrConstants constants, ObjectMapper mapper, String outputFile, String configuredFileDate) {
+        this(refData, processor, csvWriter, constants, mapper, new OutputProperties(outputFile,
                 configuredFileDate, Rollover.NONE, ZoneId.of("Asia/Kolkata"), WriteMode.PER_RECORD, 10,
                 Duration.ofMinutes(5), 1000), Clock.system(ZoneId.of("Asia/Kolkata")));
     }
@@ -70,43 +64,32 @@ public class RecordPipeline {
     RecordPipeline(RefDataClient refData, RecordProcessor processor, SftrCsvWriter csvWriter,
                    SftrConstants constants, ObjectMapper mapper, OutputProperties props, Clock clock) {
         this(new MessageTransformer(refData, processor, constants, mapper),
-                new PerRecordSink(csvWriter, new OutputFileResolver(props)),
-                new RejectWriter(new OutputFileResolver(props)), new ReportDay(props, clock));
+                new PerRecordSink(csvWriter, new OutputFileResolver(props)), new ReportDay(props, clock));
     }
 
     /**
-     * @param json      the message value as received
-     * @param sourceRef where it came from (for example topic-partition@offset); goes to the rejects file
+     * @param json      the record's JSON as stored or received
+     * @param sourceRef where it came from (for example {@code trade:42}); named in the exception, never the content
+     * @throws RecordProcessingException the record cannot be processed
+     * @throws IOException               the output file cannot be written
      */
-    public Outcome handle(String json, String sourceRef) throws IOException {
-        return handle(json, sourceRef, () -> { });
-    }
-
-    /**
-     * As {@link #handle(String, String)}, and runs {@code whenDurable} once the outcome is safely on disk:
-     * the row is in the CSV, or the reject line is written and every earlier row is in the CSV too.
-     * Kafka uses this to release an offset only when nothing before it can still be lost.
-     */
-    public Outcome handle(String json, String sourceRef, Runnable whenDurable) throws IOException {
+    public void handle(String json, String sourceRef) throws IOException {
         lock.lock();
         try {
-            LocalDate day = reportDay.today();         // once per message: the row's date and its file agree
+            LocalDate day = reportDay.today();         // once per record: the row's date and its file agree
             SftrTransactionReport report;
             try {
                 report = transformer.transform(json, day);
             } catch (RuntimeException e) {             // includes reference data failures (the client already retries)
-                rejects.write(sourceRef, RejectWriter.summarize(e), day);
-                sink.whenDurable(whenDurable);
-                return Outcome.REJECTED;
+                throw new RecordProcessingException(sourceRef, e);
             }
-            sink.append(report, day, whenDurable);
-            return Outcome.WRITTEN;
+            sink.append(report, day);
         } finally {
             lock.unlock();
         }
     }
 
-    /** Writes any rows still waiting in the sink (end of a file run, shutdown). */
+    /** Writes any rows still waiting in the sink (end of a run, shutdown). */
     public void flush() throws IOException {
         lock.lock();
         try {
@@ -116,9 +99,8 @@ public class RecordPipeline {
         }
     }
 
-    /** For tests that build the pipeline by hand; Spring closes the sink and the reject writer itself. */
+    /** For tests that build the pipeline by hand; Spring closes the sink itself. */
     void close() throws IOException {
         sink.close();
-        rejects.close();
     }
 }
