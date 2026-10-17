@@ -30,7 +30,7 @@ Use exactly one of `rest`, `kafka`, `both`, `publisher`. The REST endpoint is `P
 
 Every message, from Kafka, a file or REST, goes through the same pipeline.
 
-The Kafka consumer is a Camel YAML route, `src/main/resources/routes/kafka-ingest.camel.yaml`. It calls the bean `kafkaMessageHandler.handle` for each message and then the process `offsetCommitProcessor`. The route is loaded in every mode but starts only when `sftr.kafka.enabled=true` (the `kafka` and `both` profiles). The mapping rules are in `src/main/resources/mapper/sftr-field-mappings.json`.
+The Kafka consumer is a Camel YAML route, `src/main/resources/routes/kafka-ingest.camel.yaml`. It is a plain Kafka consumer (default offset handling) that calls the bean `kafkaMessageHandler.handle` for each message. The route is loaded in every mode but starts only when `sftr.kafka.enabled=true` (the `kafka` and `both` profiles). The mapping rules are in `src/main/resources/mapper/sftr-field-mappings.json`.
 
 ## 3. Quick start: REST mode in five minutes
 
@@ -144,7 +144,7 @@ Send messages (one JSON per line; press Ctrl+D or Ctrl+Z then Enter to finish):
 docker exec -i sftr-kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:19092 --topic trade-messages
 ```
 
-See how far the engine has read (the committed offset follows the write):
+See how far the engine has read (the committed offsets, which the Kafka client updates on its own):
 
 ```
 docker exec sftr-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:19092 --describe --group sftr-mapping-engine
@@ -300,8 +300,7 @@ For time-based batching use `--sftr.output.write-mode=INTERVAL --sftr.output.bat
 | A lambda | the lambda body in `SftrMappingFunctions`, for example `CP_CpSide` |
 | When a row is written | `PerRecordSink.append`, `BatchingSink.append`, `BatchingSink.flushLocked` |
 | Why a message was rejected | `RejectWriter.write` (the exception is the one just caught in `RecordPipeline.handle`) |
-| Kafka consumption | `KafkaMessageHandler.handle` (the `bean` step of `routes/kafka-ingest.camel.yaml`) |
-| Kafka commits | `OffsetCommitProcessor.process` (the `process` step), `OffsetCommitter.release`, `OffsetCommitter.commitReleased` |
+| Kafka consumption | `KafkaMessageHandler.handle` (the only step of `routes/kafka-ingest.camel.yaml`) |
 | Publisher | `MessagePublisher.next`, `MessagePublisher.afterSend`, `TradeMessageGenerator.message` |
 
 **Debugging tips**
